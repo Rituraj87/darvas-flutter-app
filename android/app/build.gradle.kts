@@ -14,12 +14,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-        defaultConfig {
-        applicationId "com.example.darvas_pro"
-        minSdkVersion 21
-        targetSdkVersion flutter.targetSdkVersion
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
+            defaultConfig {
+        applicationId = "com.example.darvas_pro"
+        minSdk = 21
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutterVersionCode.toInteger()
+        versionName = flutterVersionName
     }
 
     buildTypes {
