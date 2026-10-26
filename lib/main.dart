@@ -9,11 +9,19 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   const AndroidInitializationSettings initializationSettingsAndroid =
       AndroidInitializationSettings('@mipmap/ic_launcher');
   const InitializationSettings initializationSettings =
       InitializationSettings(android: initializationSettingsAndroid);
+
   await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+  // Android 13+ के लिए नोटिफिकेशन परमिशन मांगना
+  final androidImplementation = flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+  await androidImplementation?.requestNotificationsPermission();
 
   runApp(const DarvasProApp());
 }
@@ -25,7 +33,7 @@ class DarvasProApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Darvas Pro Auto',
+      title: 'Darvas Pro Auto Pilot',
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0F172A),
         cardColor: const Color(0xFF1E293B),
@@ -41,7 +49,7 @@ class DarvasProApp extends StatelessWidget {
 
 class DarvasSignal {
   final String symbol;
-  final String status; // BUY, ADD (Pyramid), HOLD, EXIT
+  final String status;
   final double currentPrice;
   final double entryPrice;
   final double stopLoss;
@@ -73,14 +81,13 @@ class DarvasMainScreen extends StatefulWidget {
 }
 
 class _DarvasMainScreenState extends State<DarvasMainScreen> {
-  double totalCapital = 100000.0;
+  double totalCapital = 10000.0;
   bool isAutoPilot = true;
   bool isScanning = false;
   String marketStatus = "मार्केट की स्थिति जांची जा रही है...";
   Timer? autoScanTimer;
   List<DarvasSignal> signalList = [];
 
-  // Nifty 500 हाई-मोमेंटम कोर स्टॉक्स
   final List<String> nifty500Core = [
     "HAL", "BEL", "TRENT", "DIXON", "ZOMATO", "POLYCAB", "PERSISTENT",
     "COFORGE", "RELIANCE", "SBIN", "BHARTIARTL", "LT", "BAJFINANCE",
@@ -101,44 +108,47 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
     super.dispose();
   }
 
-  // भारतीय समय (IST) जांचना
+  // भारतीय मार्केट टाइम (सोमवार से शुक्रवार: सुबह 9:00 से दोपहर 3:30)
   bool isIndianMarketOpen() {
-    final nowUtc = DateTime.now().toUtc();
-    final nowIst = nowUtc.add(const Duration(hours: 5, minutes: 30));
+    final now = DateTime.now();
 
     // शनिवार (6) और रविवार (7) बंद
-    if (nowIst.weekday == DateTime.saturday || nowIst.weekday == DateTime.sunday) {
+    if (now.weekday == DateTime.saturday || now.weekday == DateTime.sunday) {
       return false;
     }
 
-    final marketOpen = DateTime(nowIst.year, nowIst.month, nowIst.day, 9, 0);
-    final marketClose = DateTime(nowIst.year, nowIst.month, nowIst.day, 15, 30);
+    final totalMinutes = now.hour * 60 + now.minute;
+    final openMinutes = 9 * 60; // 09:00 AM = 540 मिनट
+    final closeMinutes = 15 * 60 + 30; // 03:30 PM = 930 मिनट
 
-    return nowIst.isAfter(marketOpen) && nowIst.isBefore(marketClose);
+    return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
   }
 
   void checkMarketAndStartTimer() {
     updateMarketStatusMessage();
-    // हर 10 मिनट में ऑटोमैटिक चक्र
-    autoScanTimer = Timer.periodic(const Duration(minutes: 10), (timer) {
+
+    // हर 5 मिनट में लाइव स्कैन
+    autoScanTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
       updateMarketStatusMessage();
       if (isIndianMarketOpen() && isAutoPilot) {
         runFullDarvasScan();
       }
     });
 
-    // ऐप खुलते ही तुरंत पहला स्कैन
+    // ऐप शुरू होते ही पहला स्कैन
     runFullDarvasScan();
   }
 
   void updateMarketStatusMessage() {
-    final nowUtc = DateTime.now().toUtc();
-    final nowIst = nowUtc.add(const Duration(hours: 5, minutes: 30));
+    final now = DateTime.now();
+    final timeStr =
+        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+
     setState(() {
       if (isIndianMarketOpen()) {
-        marketStatus = "🟢 भारतीय बाजार चालू है (9:00 AM - 3:30 PM)";
+        marketStatus = "🟢 बाजार चालू है (IST: $timeStr)";
       } else {
-        marketStatus = "🔴 बाजार बंद है (IST: ${nowIst.hour.toString().padLeft(2, '0')}:${nowIst.minute.toString().padLeft(2, '0')})";
+        marketStatus = "🔴 बाजार बंद है (IST: $timeStr)";
       }
     });
   }
@@ -150,18 +160,19 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
       channelDescription: 'Real-time Darvas Box Buy/Sell signals',
       importance: Importance.max,
       priority: Priority.high,
-      ticker: 'ticker',
+      playSound: true,
+      enableVibration: true,
     );
-    const NotificationDetails notificationDetails = NotificationDetails(android: androidDetails);
+    const NotificationDetails notificationDetails =
+        NotificationDetails(android: androidDetails);
     await flutterLocalNotificationsPlugin.show(
-      DateTime.now().millisecond,
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title,
       body,
       notificationDetails,
     );
   }
 
-  // डार्वस बॉक्स अल्गोरिदम
   Future<void> runFullDarvasScan() async {
     if (isScanning) return;
     setState(() {
@@ -175,7 +186,8 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
         final url = Uri.parse(
             'https://query1.finance.yahoo.com/v8/finance/chart/$symbol.NS?interval=1d&range=6mo');
         final response = await http.get(url, headers: {
-          'User-Agent': 'Mozilla/5.0 (Android; Mobile; rv:109.0) Gecko/109.0 Firefox/119.0'
+          'User-Agent':
+              'Mozilla/5.0 (Android; Mobile; rv:109.0) Gecko/109.0 Firefox/119.0'
         }).timeout(const Duration(seconds: 8));
 
         if (response.statusCode == 200) {
@@ -199,25 +211,26 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             }
           }
 
-          if (closes.length >= 45) {
+          if (closes.length >= 40) {
             double currentPrice = closes.last;
             double currentVol = volumes.last;
 
-            // 20 दिन का औसत वॉल्यूम
             double avgVol20 = volumes
                     .sublist(volumes.length - 21, volumes.length - 1)
                     .reduce((a, b) => a + b) /
                 20;
 
-            // 50 दिन EMA
-            double ema50 = closes.sublist(closes.length - 35).reduce((a, b) => a + b) / 35;
+            double ema50 =
+                closes.sublist(closes.length - 35).reduce((a, b) => a + b) / 35;
 
-            // डार्वस 3-Day Pivot Box
-            double boxTop = highs.sublist(highs.length - 20, highs.length - 2).reduce((a, b) => a > b ? a : b);
-            double boxBottom = lows.sublist(lows.length - 20, lows.length - 2).reduce((a, b) => a < b ? a : b);
+            double boxTop = highs
+                .sublist(highs.length - 20, highs.length - 2)
+                .reduce((a, b) => a > b ? a : b);
+            double boxBottom = lows
+                .sublist(lows.length - 20, lows.length - 2)
+                .reduce((a, b) => a < b ? a : b);
             double boxHeight = boxTop - boxBottom;
 
-            // 1% रिस्क प्रबंधन
             double riskAmount = totalCapital * 0.01;
             double riskPerShare = (currentPrice - boxBottom).abs();
             if (riskPerShare < 1.0) riskPerShare = currentPrice * 0.02;
@@ -225,12 +238,12 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             if (qty < 1) qty = 1;
 
             double target1 = boxTop + (boxHeight * 2);
-            double addLevel = boxTop + boxHeight; // अगला बॉक्स ब्रेकआउट
+            double addLevel = boxTop + boxHeight;
             double nextTarget = addLevel + (boxHeight * 2);
 
-            // सिग्नल की गणना
-            if (currentPrice > boxTop && currentPrice > ema50 && currentVol >= (avgVol20 * 1.2)) {
-              // फ्रेश ब्रेकआउट
+            if (currentPrice > boxTop &&
+                currentPrice > ema50 &&
+                currentVol >= (avgVol20 * 1.15)) {
               final sig = DarvasSignal(
                 symbol: symbol,
                 status: "BUY",
@@ -241,7 +254,7 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 addLevel: addLevel,
                 nextTarget: nextTarget,
                 suggestedQty: qty,
-                reason: "बॉक्स टॉप ब्रेकआउट + 1.2x वॉल्यूम पुष्टि!",
+                reason: "बॉक्स टॉप ब्रेकआउट + वॉल्यूम पुष्टि!",
               );
               tempResults.add(sig);
               sendNotification(
@@ -249,22 +262,20 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 "Entry: ₹$boxTop | SL: ₹$boxBottom | Target: ₹${target1.toStringAsFixed(1)} | Qty: $qty",
               );
             } else if (currentPrice > addLevel) {
-              // पिरामिडिंग (Pyramiding - शेयर जोड़ने का स्तर)
               final sig = DarvasSignal(
                 symbol: symbol,
                 status: "ADD (Pyramid)",
                 currentPrice: currentPrice,
                 entryPrice: addLevel,
-                stopLoss: boxTop, // Trailed SL
+                stopLoss: boxTop,
                 target1: nextTarget,
                 addLevel: addLevel + boxHeight,
                 nextTarget: nextTarget + boxHeight,
                 suggestedQty: (qty * 0.5).floor().clamp(1, 9999),
-                reason: "नया बॉक्स ब्रेकआउट! पुरानी पोजीशन में और शेयर जोड़ें।",
+                reason: "नया बॉक्स ब्रेकआउट! पोजीशन में और शेयर जोड़ें।",
               );
               tempResults.add(sig);
             } else if (currentPrice < boxBottom) {
-              // स्टॉप लॉस हिट
               final sig = DarvasSignal(
                 symbol: symbol,
                 status: "EXIT",
@@ -275,15 +286,14 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 addLevel: addLevel,
                 nextTarget: nextTarget,
                 suggestedQty: 0,
-                reason: "बॉक्स बॉटम टूट गया! तुरंत बाहर निकलें।",
+                reason: "बॉक्स बॉटम टूट गया! एग्जिट करें।",
               );
               tempResults.add(sig);
               sendNotification(
                 "🔴 EXIT ALERT: $symbol @ ₹${currentPrice.toStringAsFixed(1)}",
-                "स्टॉप-लॉस टूट गया है! पूंजी की सुरक्षा के लिए एग्जिट करें।",
+                "स्टॉप-लॉस टूट गया है! पूंजी सुरक्षा के लिए तुरंत बाहर निकलें।",
               );
             } else {
-              // बॉक्स के अंदर होल्ड
               final sig = DarvasSignal(
                 symbol: symbol,
                 status: "HOLD",
@@ -300,9 +310,7 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             }
           }
         }
-      } catch (_) {
-        // नेटवर्क एरर होने पर अगले शेयर पर जाएं
-      }
+      } catch (_) {}
     }
 
     setState(() {
@@ -313,14 +321,29 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final buySignals = signalList.where((s) => s.status == "BUY" || s.status == "ADD (Pyramid)").toList();
-    final otherSignals = signalList.where((s) => s.status != "BUY" && s.status != "ADD (Pyramid)").toList();
+    final buySignals = signalList
+        .where((s) => s.status == "BUY" || s.status == "ADD (Pyramid)")
+        .toList();
+    final otherSignals = signalList
+        .where((s) => s.status != "BUY" && s.status != "ADD (Pyramid)")
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('📈 Darvas Pro Auto Pilot', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('📈 Darvas Pro Auto Pilot',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF1E293B),
         actions: [
+          IconButton(
+            tooltip: "टेस्ट नोटिफिकेशन",
+            icon: const Icon(Icons.notifications_active),
+            onPressed: () {
+              sendNotification(
+                "🔔 Darvas Pro Test Alert",
+                "नोटिफिकेशन सिस्टम बिल्कुल सही काम कर रहा है!",
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => showSettingsDialog(),
@@ -329,7 +352,6 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
       ),
       body: Column(
         children: [
-          // स्टेटस बार
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             color: const Color(0xFF111827),
@@ -339,28 +361,30 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 Expanded(
                   child: Text(
                     marketStatus,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.bold),
                   ),
                 ),
                 Text(
                   "कैपिटल: ₹${totalCapital.toStringAsFixed(0)}",
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF10B981)),
+                  style: const TextStyle(
+                      fontSize: 13, color: Color(0xFF10B981)),
                 ),
               ],
             ),
           ),
           if (isScanning)
             const LinearProgressIndicator(color: Color(0xFF10B981)),
-
           Expanded(
             child: signalList.isEmpty && !isScanning
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.candlestick_chart, size: 60, color: Colors.grey),
+                        const Icon(Icons.candlestick_chart,
+                            size: 60, color: Colors.grey),
                         const SizedBox(height: 12),
-                        const Text("डेटा लोड करने के लिए नीचे 'लाइव स्कैन' दबाएं"),
+                        const Text("डेटा लोड करने के लिए नीचे बटन दबाएं"),
                         const SizedBox(height: 10),
                         ElevatedButton.icon(
                           onPressed: runFullDarvasScan,
@@ -380,7 +404,10 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 8),
                           child: Text("🔥 एक्टिव ब्रेकआउट व ऐड सिग्नल्स",
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF10B981))),
                         ),
                         ...buySignals.map((s) => buildSignalCard(s)),
                       ],
@@ -388,7 +415,10 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 8),
                           child: Text("📊 होल्ड व एग्जिट वॉचलिस्ट",
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white70)),
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white70)),
                         ),
                         ...otherSignals.map((s) => buildSignalCard(s)),
                       ],
@@ -429,10 +459,12 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
               children: [
                 Text(
                   s.symbol,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: badgeColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(8),
@@ -440,7 +472,10 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                   ),
                   child: Text(
                     s.status,
-                    style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 13),
+                    style: TextStyle(
+                        color: badgeColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13),
                   ),
                 ),
               ],
@@ -451,8 +486,6 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
               style: const TextStyle(fontSize: 15, color: Colors.white),
             ),
             const Divider(height: 16, color: Colors.white24),
-
-            // ट्रेडिंग मैट्रिक्स
             Row(
               children: [
                 Expanded(
@@ -460,13 +493,16 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text("🎯 Entry: ₹${s.entryPrice.toStringAsFixed(1)}",
-                          style: const TextStyle(color: Colors.greenAccent, fontSize: 13)),
+                          style: const TextStyle(
+                              color: Colors.greenAccent, fontSize: 13)),
                       const SizedBox(height: 4),
                       Text("🛑 Stop-Loss: ₹${s.stopLoss.toStringAsFixed(1)}",
-                          style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
+                          style: const TextStyle(
+                              color: Colors.redAccent, fontSize: 13)),
                       const SizedBox(height: 4),
                       Text("🏁 Target 1: ₹${s.target1.toStringAsFixed(1)}",
-                          style: const TextStyle(color: Colors.yellowAccent, fontSize: 13)),
+                          style: const TextStyle(
+                              color: Colors.yellowAccent, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -475,13 +511,18 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text("➕ Add Level: ₹${s.addLevel.toStringAsFixed(1)}",
-                          style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 13)),
+                          style: const TextStyle(
+                              color: Colors.lightBlueAccent, fontSize: 13)),
                       const SizedBox(height: 4),
                       Text("🚀 Next Target: ₹${s.nextTarget.toStringAsFixed(1)}",
-                          style: const TextStyle(color: Colors.cyanAccent, fontSize: 13)),
+                          style: const TextStyle(
+                              color: Colors.cyanAccent, fontSize: 13)),
                       const SizedBox(height: 4),
                       Text("📦 Qty (1% Risk): ${s.suggestedQty} Shares",
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              fontSize: 13)),
                     ],
                   ),
                 ),
@@ -490,7 +531,10 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             const SizedBox(height: 8),
             Text(
               "विवरण: ${s.reason}",
-              style: const TextStyle(fontSize: 12, color: Colors.white60, fontStyle: FontStyle.italic),
+              style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.white60,
+                  fontStyle: FontStyle.italic),
             ),
           ],
         ),
@@ -499,7 +543,8 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
   }
 
   void showSettingsDialog() {
-    final controller = TextEditingController(text: totalCapital.toStringAsFixed(0));
+    final controller =
+        TextEditingController(text: totalCapital.toStringAsFixed(0));
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -510,12 +555,13 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             TextField(
               controller: controller,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "कुल ट्रेडिंग पूंजी (₹)"),
+              decoration:
+                  const InputDecoration(labelText: "कुल ट्रेडिंग पूंजी (₹)"),
             ),
             const SizedBox(height: 10),
             SwitchListTile(
               title: const Text("ऑटो-पायलट स्कैन"),
-              subtitle: const Text("9:00 AM - 3:30 PM ऑटो स्कैन"),
+              subtitle: const Text("मार्केट समय में ऑटो स्कैन"),
               value: isAutoPilot,
               onChanged: (val) {
                 setState(() => isAutoPilot = val);
@@ -528,7 +574,8 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
           TextButton(
             onPressed: () {
               setState(() {
-                totalCapital = double.tryParse(controller.text) ?? 100000.0;
+                totalCapital =
+                    double.tryParse(controller.text) ?? 10000.0;
               });
               Navigator.pop(ctx);
             },
