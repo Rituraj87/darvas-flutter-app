@@ -3,25 +3,165 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:workmanager/workmanager.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
+const String darvasTaskKey = "com.darvaspro.backgroundScanTask";
+
+final List<String> backgroundStockWatchlist = [
+  "HAL", "BEL", "TRENT", "DIXON", "ZOMATO", "POLYCAB", "PERSISTENT",
+  "COFORGE", "RELIANCE", "SBIN", "BHARTIARTL", "LT", "BAJFINANCE",
+  "M&M", "SUNPHARMA", "TITAN", "TATAMOTORS", "ADANIENT", "DLF", "SIEMENS",
+  "ABB", "CUMMINSIND", "CHOLAFIN", "MUTHOOTFIN", "SHRIRAMFIN", "VEDL"
+];
+
+// भारतीय बाजार समय सत्यापन (सुबह 9:00 से दोपहर 3:30, सोम-शुक्र)
+bool checkIsMarketOpenNow() {
+  final now = DateTime.now();
+  if (now.weekday == DateTime.saturday || now.weekday == DateTime.sunday) {
+    return false;
+  }
+  final currentMinutes = now.hour * 60 + now.minute;
+  return currentMinutes >= (9 * 60) && currentMinutes <= (15 * 60 + 30);
+}
+
+Future<void> triggerNotification(String title, String body) async {
+  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    'darvas_channel_id',
+    'Darvas Alerts',
+    channelDescription: 'Real-time Darvas Box Buy/Sell signals',
+    importance: Importance.max,
+    priority: Priority.high,
+    playSound: true,
+    enableVibration: true,
+  );
+  const NotificationDetails notificationDetails =
+      NotificationDetails(android: androidDetails);
+  await flutterLocalNotificationsPlugin.show(
+    DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    title,
+    body,
+    notificationDetails,
+  );
+}
+
+// ऐप पूरी तरह बंद होने पर चलने वाला स्वतंत्र बैकग्राउंड टास्क
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    const AndroidInitializationSettings initAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings initSettings =
+        InitializationSettings(android: initAndroid);
+    await flutterLocalNotificationsPlugin.initialize(initSettings);
+
+    if (!checkIsMarketOpenNow()) {
+      return Future.value(true);
+    }
+
+    for (String symbol in backgroundStockWatchlist) {
+      try {
+        final url = Uri.parse(
+            'https://query1.finance.yahoo.com/v8/finance/chart/$symbol.NS?interval=1d&range=6mo');
+        final response = await http.get(url, headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Android; Mobile; rv:109.0) Gecko/109.0 Firefox/119.0'
+        }).timeout(const Duration(seconds: 7));
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          final quote = data['chart']['result'][0]['indicators']['quote'][0];
+
+          List<double> closes = [];
+          List<double> highs = [];
+          List<double> lows = [];
+          List<double> volumes = [];
+
+          for (int i = 0; i < quote['close'].length; i++) {
+            if (quote['close'][i] != null &&
+                quote['high'][i] != null &&
+                quote['low'][i] != null &&
+                quote['volume'][i] != null) {
+              closes.add(quote['close'][i].toDouble());
+              highs.add(quote['high'][i].toDouble());
+              lows.add(quote['low'][i].toDouble());
+              volumes.add(quote['volume'][i].toDouble());
+            }
+          }
+
+          if (closes.length >= 40) {
+            double currentPrice = closes.last;
+            double currentVol = volumes.last;
+            double avgVol20 = volumes
+                    .sublist(volumes.length - 21, volumes.length - 1)
+                    .reduce((a, b) => a + b) /
+                20;
+            double ema50 =
+                closes.sublist(closes.length - 35).reduce((a, b) => a + b) / 35;
+
+            double boxTop = highs
+                .sublist(highs.length - 20, highs.length - 2)
+                .reduce((a, b) => a > b ? a : b);
+            double boxBottom = lows
+                .sublist(lows.length - 20, lows.length - 2)
+                .reduce((a, b) => a < b ? a : b);
+
+            double riskPerShare = (currentPrice - boxBottom).abs();
+            if (riskPerShare < 1.0) riskPerShare = currentPrice * 0.02;
+            int qty = (1000 / riskPerShare).floor().clamp(1, 10000);
+
+            if (currentPrice > boxTop && currentPrice > ema50 && currentVol >= (avgVol20 * 1.15)) {
+              await triggerNotification(
+                "🟢 BUY ALERT: $symbol @ ₹${currentPrice.toStringAsFixed(1)}",
+                "Entry: ₹$boxTop | SL: ₹$boxBottom | Target: ₹${(boxTop + ((boxTop - boxBottom) * 2)).toStringAsFixed(1)} | Qty: $qty",
+              );
+            } else if (currentPrice < boxBottom) {
+              await triggerNotification(
+                "🔴 EXIT ALERT: $symbol @ ₹${currentPrice.toStringAsFixed(1)}",
+                "बॉक्स बॉटम टूट गया है! पूंजी सुरक्षा के लिए तुरंत बाहर निकलें।",
+              );
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return Future.value(true);
+  });
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  const AndroidInitializationSettings initializationSettingsAndroid =
+  const AndroidInitializationSettings initAndroid =
       AndroidInitializationSettings('@mipmap/ic_launcher');
-  const InitializationSettings initializationSettings =
-      InitializationSettings(android: initializationSettingsAndroid);
+  const InitializationSettings initSettings =
+      InitializationSettings(android: initAndroid);
+  await flutterLocalNotificationsPlugin.initialize(initSettings);
 
-  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
-
-  // Android 13+ के लिए नोटिफिकेशन परमिशन मांगना
-  final androidImplementation = flutterLocalNotificationsPlugin
+  final androidImpl = flutterLocalNotificationsPlugin
       .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
-  await androidImplementation?.requestNotificationsPermission();
+  await androidImpl?.requestNotificationsPermission();
+
+  // WorkManager को बैकग्राउंड शेड्यूलिंग के लिए इनिशियलाइज़ करना
+  await Workmanager().initialize(
+    callbackDispatcher,
+    isInDebugMode: false,
+  );
+
+  // हर 15 मिनट में चलने वाला बैकग्राउंड टास्क रजिस्टर करना
+  await Workmanager().registerPeriodicTask(
+    "darvas_bg_periodic_task",
+    darvasTaskKey,
+    frequency: const Duration(minutes: 15),
+    constraints: Constraints(
+      networkType: NetworkType.connected,
+    ),
+    existingWorkPolicy: ExistingWorkPolicy.keep,
+  );
 
   runApp(const DarvasProApp());
 }
@@ -81,61 +221,15 @@ class DarvasMainScreen extends StatefulWidget {
 }
 
 class _DarvasMainScreenState extends State<DarvasMainScreen> {
-  double totalCapital = 10000.0;
-  bool isAutoPilot = true;
+  double totalCapital = 100000.0;
   bool isScanning = false;
-  String marketStatus = "मार्केट की स्थिति जांची जा रही है...";
-  Timer? autoScanTimer;
+  String marketStatus = "मार्केट स्थिति जांची जा रही है...";
   List<DarvasSignal> signalList = [];
-
-  final List<String> nifty500Core = [
-    "HAL", "BEL", "TRENT", "DIXON", "ZOMATO", "POLYCAB", "PERSISTENT",
-    "COFORGE", "RELIANCE", "SBIN", "BHARTIARTL", "LT", "BAJFINANCE",
-    "M&M", "SUNPHARMA", "TITAN", "TATAMOTORS", "ADANIENT", "DLF", "SIEMENS",
-    "ABB", "CUMMINSIND", "CHOLAFIN", "MUTHOOTFIN", "SHRIRAMFIN", "VEDL",
-    "HCLTECH", "NTPC", "POWERGRID", "TATASTEEL", "MAZDOCK", "BSE", "CDSL"
-  ];
 
   @override
   void initState() {
     super.initState();
-    checkMarketAndStartTimer();
-  }
-
-  @override
-  void dispose() {
-    autoScanTimer?.cancel();
-    super.dispose();
-  }
-
-  // भारतीय मार्केट टाइम (सोमवार से शुक्रवार: सुबह 9:00 से दोपहर 3:30)
-  bool isIndianMarketOpen() {
-    final now = DateTime.now();
-
-    // शनिवार (6) और रविवार (7) बंद
-    if (now.weekday == DateTime.saturday || now.weekday == DateTime.sunday) {
-      return false;
-    }
-
-    final totalMinutes = now.hour * 60 + now.minute;
-    final openMinutes = 9 * 60; // 09:00 AM = 540 मिनट
-    final closeMinutes = 15 * 60 + 30; // 03:30 PM = 930 मिनट
-
-    return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
-  }
-
-  void checkMarketAndStartTimer() {
     updateMarketStatusMessage();
-
-    // हर 5 मिनट में लाइव स्कैन
-    autoScanTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
-      updateMarketStatusMessage();
-      if (isIndianMarketOpen() && isAutoPilot) {
-        runFullDarvasScan();
-      }
-    });
-
-    // ऐप शुरू होते ही पहला स्कैन
     runFullDarvasScan();
   }
 
@@ -143,34 +237,13 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
     final now = DateTime.now();
     final timeStr =
         "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
-
     setState(() {
-      if (isIndianMarketOpen()) {
-        marketStatus = "🟢 बाजार चालू है (IST: $timeStr)";
+      if (checkIsMarketOpenNow()) {
+        marketStatus = "🟢 बाजार चालू है (IST: $timeStr) | ऑटो बैकग्राउंड एक्टिव";
       } else {
         marketStatus = "🔴 बाजार बंद है (IST: $timeStr)";
       }
     });
-  }
-
-  Future<void> sendNotification(String title, String body) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'darvas_channel_id',
-      'Darvas Alerts',
-      channelDescription: 'Real-time Darvas Box Buy/Sell signals',
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-      enableVibration: true,
-    );
-    const NotificationDetails notificationDetails =
-        NotificationDetails(android: androidDetails);
-    await flutterLocalNotificationsPlugin.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
-      notificationDetails,
-    );
   }
 
   Future<void> runFullDarvasScan() async {
@@ -181,7 +254,7 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
 
     List<DarvasSignal> tempResults = [];
 
-    for (String symbol in nifty500Core) {
+    for (String symbol in backgroundStockWatchlist) {
       try {
         final url = Uri.parse(
             'https://query1.finance.yahoo.com/v8/finance/chart/$symbol.NS?interval=1d&range=6mo');
@@ -214,12 +287,10 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
           if (closes.length >= 40) {
             double currentPrice = closes.last;
             double currentVol = volumes.last;
-
             double avgVol20 = volumes
                     .sublist(volumes.length - 21, volumes.length - 1)
                     .reduce((a, b) => a + b) /
                 20;
-
             double ema50 =
                 closes.sublist(closes.length - 35).reduce((a, b) => a + b) / 35;
 
@@ -244,7 +315,7 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             if (currentPrice > boxTop &&
                 currentPrice > ema50 &&
                 currentVol >= (avgVol20 * 1.15)) {
-              final sig = DarvasSignal(
+              tempResults.add(DarvasSignal(
                 symbol: symbol,
                 status: "BUY",
                 currentPrice: currentPrice,
@@ -255,14 +326,9 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 nextTarget: nextTarget,
                 suggestedQty: qty,
                 reason: "बॉक्स टॉप ब्रेकआउट + वॉल्यूम पुष्टि!",
-              );
-              tempResults.add(sig);
-              sendNotification(
-                "🟢 BUY ALERT: $symbol @ ₹${currentPrice.toStringAsFixed(1)}",
-                "Entry: ₹$boxTop | SL: ₹$boxBottom | Target: ₹${target1.toStringAsFixed(1)} | Qty: $qty",
-              );
+              ));
             } else if (currentPrice > addLevel) {
-              final sig = DarvasSignal(
+              tempResults.add(DarvasSignal(
                 symbol: symbol,
                 status: "ADD (Pyramid)",
                 currentPrice: currentPrice,
@@ -272,11 +338,10 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 addLevel: addLevel + boxHeight,
                 nextTarget: nextTarget + boxHeight,
                 suggestedQty: (qty * 0.5).floor().clamp(1, 9999),
-                reason: "नया बॉक्स ब्रेकआउट! पोजीशन में और शेयर जोड़ें।",
-              );
-              tempResults.add(sig);
+                reason: "नया बॉक्स ब्रेकआउट! शेयर जोड़ें।",
+              ));
             } else if (currentPrice < boxBottom) {
-              final sig = DarvasSignal(
+              tempResults.add(DarvasSignal(
                 symbol: symbol,
                 status: "EXIT",
                 currentPrice: currentPrice,
@@ -286,15 +351,10 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 addLevel: addLevel,
                 nextTarget: nextTarget,
                 suggestedQty: 0,
-                reason: "बॉक्स बॉटम टूट गया! एग्जिट करें।",
-              );
-              tempResults.add(sig);
-              sendNotification(
-                "🔴 EXIT ALERT: $symbol @ ₹${currentPrice.toStringAsFixed(1)}",
-                "स्टॉप-लॉस टूट गया है! पूंजी सुरक्षा के लिए तुरंत बाहर निकलें।",
-              );
+                reason: "बॉक्स बॉटम टूटा! एग्जिट करें।",
+              ));
             } else {
-              final sig = DarvasSignal(
+              tempResults.add(DarvasSignal(
                 symbol: symbol,
                 status: "HOLD",
                 currentPrice: currentPrice,
@@ -304,9 +364,8 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 addLevel: addLevel,
                 nextTarget: nextTarget,
                 suggestedQty: qty,
-                reason: "डार्वस बॉक्स के अंदर कंसॉलिडेशन चल रहा है।",
-              );
-              tempResults.add(sig);
+                reason: "कंसॉलिडेशन बॉक्स के अंदर है।",
+              ));
             }
           }
         }
@@ -338,15 +397,11 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             tooltip: "टेस्ट नोटिफिकेशन",
             icon: const Icon(Icons.notifications_active),
             onPressed: () {
-              sendNotification(
+              triggerNotification(
                 "🔔 Darvas Pro Test Alert",
-                "नोटिफिकेशन सिस्टम बिल्कुल सही काम कर रहा है!",
+                "WorkManager और नोटिफिकेशन सर्विस बैकग्राउंड के लिए तैयार है!",
               );
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => showSettingsDialog(),
           ),
         ],
       ),
@@ -378,23 +433,13 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
           Expanded(
             child: signalList.isEmpty && !isScanning
                 ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.candlestick_chart,
-                            size: 60, color: Colors.grey),
-                        const SizedBox(height: 12),
-                        const Text("डेटा लोड करने के लिए नीचे बटन दबाएं"),
-                        const SizedBox(height: 10),
-                        ElevatedButton.icon(
-                          onPressed: runFullDarvasScan,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text("लाइव स्कैन शुरू करें"),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF10B981),
-                          ),
-                        )
-                      ],
+                    child: ElevatedButton.icon(
+                      onPressed: runFullDarvasScan,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text("लाइव स्कैन शुरू करें"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                      ),
                     ),
                   )
                 : ListView(
@@ -538,50 +583,6 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void showSettingsDialog() {
-    final controller =
-        TextEditingController(text: totalCapital.toStringAsFixed(0));
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("सेटिंग्स"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              decoration:
-                  const InputDecoration(labelText: "कुल ट्रेडिंग पूंजी (₹)"),
-            ),
-            const SizedBox(height: 10),
-            SwitchListTile(
-              title: const Text("ऑटो-पायलट स्कैन"),
-              subtitle: const Text("मार्केट समय में ऑटो स्कैन"),
-              value: isAutoPilot,
-              onChanged: (val) {
-                setState(() => isAutoPilot = val);
-                Navigator.pop(ctx);
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() {
-                totalCapital =
-                    double.tryParse(controller.text) ?? 10000.0;
-              });
-              Navigator.pop(ctx);
-            },
-            child: const Text("सेव करें"),
-          )
-        ],
       ),
     );
   }
