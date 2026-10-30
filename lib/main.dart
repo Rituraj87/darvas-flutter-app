@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -17,7 +18,6 @@ final List<String> backgroundStockWatchlist = [
   "ABB", "CUMMINSIND", "CHOLAFIN", "MUTHOOTFIN", "SHRIRAMFIN", "VEDL"
 ];
 
-// भारतीय बाजार समय सत्यापन (सुबह 9:00 से दोपहर 3:30, सोम-शुक्र)
 bool checkIsMarketOpenNow() {
   final now = DateTime.now();
   if (now.weekday == DateTime.saturday || now.weekday == DateTime.sunday) {
@@ -47,7 +47,6 @@ Future<void> triggerNotification(String title, String body) async {
   );
 }
 
-// ऐप पूरी तरह बंद होने पर चलने वाला स्वतंत्र बैकग्राउंड टास्क
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
@@ -120,7 +119,7 @@ void callbackDispatcher() {
             } else if (currentPrice < boxBottom) {
               await triggerNotification(
                 "🔴 EXIT ALERT: $symbol @ ₹${currentPrice.toStringAsFixed(1)}",
-                "बॉक्स बॉटम टूट गया है! पूंजी सुरक्षा के लिए तुरंत बाहर निकलें।",
+                "बॉक्स बॉटम टूट गया है! तुरंत बाहर निकलें।",
               );
             }
           }
@@ -146,13 +145,11 @@ void main() async {
           AndroidFlutterLocalNotificationsPlugin>();
   await androidImpl?.requestNotificationsPermission();
 
-  // WorkManager को बैकग्राउंड शेड्यूलिंग के लिए इनिशियलाइज़ करना
   await Workmanager().initialize(
     callbackDispatcher,
     isInDebugMode: false,
   );
 
-  // हर 15 मिनट में चलने वाला बैकग्राउंड टास्क रजिस्टर करना
   await Workmanager().registerPeriodicTask(
     "darvas_bg_periodic_task",
     darvasTaskKey,
@@ -187,6 +184,7 @@ class DarvasProApp extends StatelessWidget {
   }
 }
 
+// मॉडल क्लास
 class DarvasSignal {
   final String symbol;
   final String status;
@@ -213,6 +211,24 @@ class DarvasSignal {
   });
 }
 
+class VirtualPosition {
+  final String symbol;
+  final double buyPrice;
+  double currentPrice;
+  double currentSL;
+  final int qty;
+  final DateTime buyTime;
+
+  VirtualPosition({
+    required this.symbol,
+    required this.buyPrice,
+    required this.currentPrice,
+    required this.currentSL,
+    required this.qty,
+    required this.buyTime,
+  });
+}
+
 class DarvasMainScreen extends StatefulWidget {
   const DarvasMainScreen({super.key});
 
@@ -221,10 +237,11 @@ class DarvasMainScreen extends StatefulWidget {
 }
 
 class _DarvasMainScreenState extends State<DarvasMainScreen> {
-  double totalCapital = 100000.0;
+  double virtualCash = 100000.0; // ₹1 लाख की वर्चुअल पूंजी
   bool isScanning = false;
-  String marketStatus = "मार्केट स्थिति जांची जा रही है...";
+  String marketStatus = "जाँच हो रही है...";
   List<DarvasSignal> signalList = [];
+  List<VirtualPosition> activePositions = [];
 
   @override
   void initState() {
@@ -239,18 +256,258 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
         "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
     setState(() {
       if (checkIsMarketOpenNow()) {
-        marketStatus = "🟢 बाजार चालू है (IST: $timeStr) | ऑटो बैकग्राउंड एक्टिव";
+        marketStatus = "🟢 बाजार खुला है (IST: $timeStr)";
       } else {
         marketStatus = "🔴 बाजार बंद है (IST: $timeStr)";
       }
     });
   }
 
+  // 1. ट्रेडिंगव्यू में खोलना
+  Future<void> openTradingView(String symbol) async {
+    final uri = Uri.parse("https://in.tradingview.com/chart/?symbol=NSE:$symbol");
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("TradingView लिंक खोलने में असमर्थ")),
+      );
+    }
+  }
+
+  // 2. डीमैट खाता चयन मेनू
+  void showBrokerSelectionSheet(String symbol) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "🚀 $symbol ट्रेड करें - डीमैट खाता चुनें",
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 15),
+              ListTile(
+                leading: const Icon(Icons.account_balance_wallet, color: Colors.blueAccent),
+                title: const Text("Angel One (एंजेल वन)"),
+                subtitle: const Text("Angel One ऐप में खोलें"),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  launchUrl(Uri.parse("angelone://spark/search?query=$symbol"),
+                      mode: LaunchMode.externalApplication);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.flash_on, color: Color(0xFF10B981)),
+                title: const Text("Dhan (धन ऐप)"),
+                subtitle: const Text("Dhan ट्रेडिंग टर्मिनल खोलें"),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  launchUrl(Uri.parse("dhan://trade/$symbol"),
+                      mode: LaunchMode.externalApplication);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.payments, color: Colors.cyanAccent),
+                title: const Text("Paytm Money (पेटीएम मनी)"),
+                subtitle: const Text("Paytm Money ऐप में खोजें"),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  launchUrl(Uri.parse("paytmmoney://stocks/detail?symbol=$symbol"),
+                      mode: LaunchMode.externalApplication);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 3. वर्चुअल ट्रेड खरीदना
+  void buyVirtualTrade(DarvasSignal s) {
+    double totalTradeValue = s.currentPrice * s.suggestedQty;
+    if (virtualCash < totalTradeValue) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ वर्चुअल कैश कम है! पूंजी समाप्त हो गई है।")),
+      );
+      return;
+    }
+
+    setState(() {
+      virtualCash -= totalTradeValue;
+      activePositions.add(VirtualPosition(
+        symbol: s.symbol,
+        buyPrice: s.currentPrice,
+        currentPrice: s.currentPrice,
+        currentSL: s.stopLoss,
+        qty: s.suggestedQty,
+        buyTime: DateTime.now(),
+      ));
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("✅ ${s.symbol} के ${s.suggestedQty} शेयर वर्चुअल पोर्टफोलियो में जोड़े गए!"),
+        backgroundColor: const Color(0xFF10B981),
+      ),
+    );
+  }
+
+  // वर्चुअल ट्रेड बंद (एग्जिट) करना
+  void exitVirtualTrade(VirtualPosition pos) {
+    double saleProceeds = pos.currentPrice * pos.qty;
+    double pnl = (pos.currentPrice - pos.buyPrice) * pos.qty;
+
+    setState(() {
+      virtualCash += saleProceeds;
+      activePositions.remove(pos);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          "${pos.symbol} एग्जिट! P&L: ₹${pnl.toStringAsFixed(2)}",
+        ),
+        backgroundColor: pnl >= 0 ? const Color(0xFF10B981) : Colors.redAccent,
+      ),
+    );
+  }
+
+  // एक्टिव ट्रेड्स और ट्रेलिंग स्टॉप-लॉस विंडो
+  void openActivePositionsWindow() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => StatefulBuilder(
+          builder: (context, setModalState) {
+            double totalPortfolioValue = virtualCash;
+            for (var pos in activePositions) {
+              totalPortfolioValue += (pos.currentPrice * pos.qty);
+            }
+
+            return Scaffold(
+              appBar: AppBar(
+                title: const Text("📋 वर्चुअल पोर्टफोलियो व ट्रेलिंग ट्रैकर"),
+                backgroundColor: const Color(0xFF1E293B),
+              ),
+              body: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    color: const Color(0xFF111827),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("उपलब्ध कैश", style: TextStyle(color: Colors.white60, fontSize: 13)),
+                            Text("₹${virtualCash.toStringAsFixed(1)}",
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            const Text("कुल पोर्टफोलियो", style: TextStyle(color: Colors.white60, fontSize: 13)),
+                            Text("₹${totalPortfolioValue.toStringAsFixed(1)}",
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: activePositions.isEmpty
+                        ? const Center(
+                            child: Text("कोई सक्रिय पोजीशन नहीं है। सिग्नल्स से 'Buy' दबाकर ट्रेड जोड़ें।"),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: activePositions.length,
+                            itemBuilder: (context, index) {
+                              final pos = activePositions[index];
+                              final pnl = (pos.currentPrice - pos.buyPrice) * pos.qty;
+                              final isProfit = pnl >= 0;
+
+                              return Card(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                margin: const EdgeInsets.symmetric(vertical: 8),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(14),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(pos.symbol, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                          Text(
+                                            "${isProfit ? '+' : ''}₹${pnl.toStringAsFixed(1)}",
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: isProfit ? const Color(0xFF10B981) : Colors.redAccent,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const Divider(height: 16),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text("खरीद भाव: ₹${pos.buyPrice.toStringAsFixed(1)}"),
+                                          Text("वर्तमान भाव: ₹${pos.currentPrice.toStringAsFixed(1)}"),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text("क्वांटिटी: ${pos.qty} शेयर्स"),
+                                          Text("🛑 Trailing SL: ₹${pos.currentSL.toStringAsFixed(1)}",
+                                              style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      ElevatedButton.icon(
+                                        onPressed: () {
+                                          exitVirtualTrade(pos);
+                                          setModalState(() {});
+                                          setState(() {});
+                                        },
+                                        icon: const Icon(Icons.exit_to_app, color: Colors.white),
+                                        label: const Text("Exit Position (ट्रेड क्लोज करें)"),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.redAccent,
+                                          minimumSize: const Size.fromHeight(38),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> runFullDarvasScan() async {
     if (isScanning) return;
-    setState(() {
-      isScanning = true;
-    });
+    setState(() => isScanning = true);
 
     List<DarvasSignal> tempResults = [];
 
@@ -302,19 +559,26 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 .reduce((a, b) => a < b ? a : b);
             double boxHeight = boxTop - boxBottom;
 
-            double riskAmount = totalCapital * 0.01;
             double riskPerShare = (currentPrice - boxBottom).abs();
             if (riskPerShare < 1.0) riskPerShare = currentPrice * 0.02;
-            int qty = (riskAmount / riskPerShare).floor();
-            if (qty < 1) qty = 1;
+            int qty = (1000 / riskPerShare).floor().clamp(1, 10000);
 
             double target1 = boxTop + (boxHeight * 2);
             double addLevel = boxTop + boxHeight;
             double nextTarget = addLevel + (boxHeight * 2);
 
-            if (currentPrice > boxTop &&
-                currentPrice > ema50 &&
-                currentVol >= (avgVol20 * 1.15)) {
+            // एक्टिव वर्चुअल पोजीशन के ट्रेलिंग स्टॉप-लॉस को ऑटोमैटिक अपडेट करना
+            for (var pos in activePositions) {
+              if (pos.symbol == symbol) {
+                pos.currentPrice = currentPrice;
+                // अगर शेयर ऊपर के नए बॉक्स में प्रवेश करता है, तो SL को पिछले बॉक्स के टॉप पर ट्रेल करें
+                if (currentPrice > addLevel && pos.currentSL < boxTop) {
+                  pos.currentSL = boxTop;
+                }
+              }
+            }
+
+            if (currentPrice > boxTop && currentPrice > ema50 && currentVol >= (avgVol20 * 1.15)) {
               tempResults.add(DarvasSignal(
                 symbol: symbol,
                 status: "BUY",
@@ -380,26 +644,42 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final buySignals = signalList
-        .where((s) => s.status == "BUY" || s.status == "ADD (Pyramid)")
-        .toList();
-    final otherSignals = signalList
-        .where((s) => s.status != "BUY" && s.status != "ADD (Pyramid)")
-        .toList();
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('📈 Darvas Pro Auto Pilot',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('📈 Darvas Pro Auto Pilot', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF1E293B),
         actions: [
+          // वर्चुअल पोर्टफोलियो खोलने का बटन
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                tooltip: "वर्चुअल पोर्टफोलियो",
+                icon: const Icon(Icons.wallet, color: Color(0xFF10B981)),
+                onPressed: openActivePositionsWindow,
+              ),
+              if (activePositions.isNotEmpty)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: CircleAvatar(
+                    radius: 8,
+                    backgroundColor: Colors.redAccent,
+                    child: Text(
+                      '${activePositions.length}',
+                      style: const TextStyle(fontSize: 10, color: Colors.white),
+                    ),
+                  ),
+                )
+            ],
+          ),
           IconButton(
             tooltip: "टेस्ट नोटिफिकेशन",
             icon: const Icon(Icons.notifications_active),
             onPressed: () {
               triggerNotification(
                 "🔔 Darvas Pro Test Alert",
-                "WorkManager और नोटिफिकेशन सर्विस बैकग्राउंड के लिए तैयार है!",
+                "नोटिफिकेशन सर्विस बैकग्राउंड के लिए पूरी तरह तैयार है!",
               );
             },
           ),
@@ -416,20 +696,17 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 Expanded(
                   child: Text(
                     marketStatus,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                   ),
                 ),
                 Text(
-                  "कैपिटल: ₹${totalCapital.toStringAsFixed(0)}",
-                  style: const TextStyle(
-                      fontSize: 13, color: Color(0xFF10B981)),
+                  "कैश: ₹${virtualCash.toStringAsFixed(0)}",
+                  style: const TextStyle(fontSize: 13, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
                 ),
               ],
             ),
           ),
-          if (isScanning)
-            const LinearProgressIndicator(color: Color(0xFF10B981)),
+          if (isScanning) const LinearProgressIndicator(color: Color(0xFF10B981)),
           Expanded(
             child: signalList.isEmpty && !isScanning
                 ? Center(
@@ -437,37 +714,12 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                       onPressed: runFullDarvasScan,
                       icon: const Icon(Icons.refresh),
                       label: const Text("लाइव स्कैन शुरू करें"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
-                      ),
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
                     ),
                   )
                 : ListView(
                     padding: const EdgeInsets.all(10),
-                    children: [
-                      if (buySignals.isNotEmpty) ...[
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Text("🔥 एक्टिव ब्रेकआउट व ऐड सिग्नल्स",
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF10B981))),
-                        ),
-                        ...buySignals.map((s) => buildSignalCard(s)),
-                      ],
-                      if (otherSignals.isNotEmpty) ...[
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Text("📊 होल्ड व एग्जिट वॉचलिस्ट",
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white70)),
-                        ),
-                        ...otherSignals.map((s) => buildSignalCard(s)),
-                      ],
-                    ],
+                    children: signalList.map((s) => buildInteractiveStockCard(s)).toList(),
                   ),
           ),
         ],
@@ -481,7 +733,8 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
     );
   }
 
-  Widget buildSignalCard(DarvasSignal s) {
+  // स्वाइप और 3 क्विक एक्शन वाला कार्ड
+  Widget buildInteractiveStockCard(DarvasSignal s) {
     Color badgeColor = s.status == "BUY"
         ? const Color(0xFF10B981)
         : s.status == "ADD (Pyramid)"
@@ -491,9 +744,9 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 : Colors.orange;
 
     return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.symmetric(vertical: 6),
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      margin: const EdgeInsets.symmetric(vertical: 8),
       child: Padding(
         padding: const EdgeInsets.all(14.0),
         child: Column(
@@ -502,52 +755,33 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  s.symbol,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                Text(s.symbol, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: badgeColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: badgeColor),
                   ),
-                  child: Text(
-                    s.status,
-                    style: TextStyle(
-                        color: badgeColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13),
-                  ),
+                  child: Text(s.status, style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 13)),
                 ),
               ],
             ),
             const SizedBox(height: 6),
-            Text(
-              "वर्तमान भाव: ₹${s.currentPrice.toStringAsFixed(2)}",
-              style: const TextStyle(fontSize: 15, color: Colors.white),
-            ),
+            Text("वर्तमान भाव: ₹${s.currentPrice.toStringAsFixed(2)}", style: const TextStyle(fontSize: 15)),
             const Divider(height: 16, color: Colors.white24),
+
             Row(
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("🎯 Entry: ₹${s.entryPrice.toStringAsFixed(1)}",
-                          style: const TextStyle(
-                              color: Colors.greenAccent, fontSize: 13)),
+                      Text("🎯 Entry: ₹${s.entryPrice.toStringAsFixed(1)}", style: const TextStyle(color: Colors.greenAccent, fontSize: 13)),
                       const SizedBox(height: 4),
-                      Text("🛑 Stop-Loss: ₹${s.stopLoss.toStringAsFixed(1)}",
-                          style: const TextStyle(
-                              color: Colors.redAccent, fontSize: 13)),
+                      Text("🛑 SL: ₹${s.stopLoss.toStringAsFixed(1)}", style: const TextStyle(color: Colors.redAccent, fontSize: 13)),
                       const SizedBox(height: 4),
-                      Text("🏁 Target 1: ₹${s.target1.toStringAsFixed(1)}",
-                          style: const TextStyle(
-                              color: Colors.yellowAccent, fontSize: 13)),
+                      Text("🏁 Target 1: ₹${s.target1.toStringAsFixed(1)}", style: const TextStyle(color: Colors.yellowAccent, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -555,31 +789,65 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("➕ Add Level: ₹${s.addLevel.toStringAsFixed(1)}",
-                          style: const TextStyle(
-                              color: Colors.lightBlueAccent, fontSize: 13)),
+                      Text("➕ Add: ₹${s.addLevel.toStringAsFixed(1)}", style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 13)),
                       const SizedBox(height: 4),
-                      Text("🚀 Next Target: ₹${s.nextTarget.toStringAsFixed(1)}",
-                          style: const TextStyle(
-                              color: Colors.cyanAccent, fontSize: 13)),
+                      Text("🚀 Next: ₹${s.nextTarget.toStringAsFixed(1)}", style: const TextStyle(color: Colors.cyanAccent, fontSize: 13)),
                       const SizedBox(height: 4),
-                      Text("📦 Qty (1% Risk): ${s.suggestedQty} Shares",
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              fontSize: 13)),
+                      Text("📦 Qty: ${s.suggestedQty} Shares", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)),
                     ],
                   ),
                 ),
               ],
             ),
+
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: Colors.white12),
             const SizedBox(height: 8),
-            Text(
-              "विवरण: ${s.reason}",
-              style: const TextStyle(
-                  fontSize: 12,
-                  color: Colors.white60,
-                  fontStyle: FontStyle.italic),
+
+            // तीनों मुख्य एक्शन बटन
+            Row(
+              children: [
+                // 1. वर्चुअल ट्रेडिंग में पोजीशन लेना
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => buyVirtualTrade(s),
+                    icon: const Icon(Icons.add_shopping_cart, size: 16),
+                    label: const Text("Buy Virtual", style: TextStyle(fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF10B981),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+
+                // 2. डायरेक्ट ट्रेडिंगव्यू चार्ट
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => openTradingView(s.symbol),
+                    icon: const Icon(Icons.show_chart, size: 16, color: Colors.blueAccent),
+                    label: const Text("TradingView", style: TextStyle(fontSize: 11, color: Colors.blueAccent)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      side: const BorderSide(color: Colors.blueAccent),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
+
+                // 3. डीमैट खाता मेनू (Angel One, Dhan, Paytm)
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => showBrokerSelectionSheet(s.symbol),
+                    icon: const Icon(Icons.launch, size: 16, color: Colors.orangeAccent),
+                    label: const Text("Demat App", style: TextStyle(fontSize: 11, color: Colors.orangeAccent)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      side: const BorderSide(color: Colors.orangeAccent),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
