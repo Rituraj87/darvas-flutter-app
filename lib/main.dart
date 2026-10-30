@@ -151,12 +151,12 @@ void main() async {
     isInDebugMode: false,
   );
 
+  // Background Periodic Task (बिना किसी conflicting policy के सुरक्षित रूप से)
   await Workmanager().registerPeriodicTask(
     "darvas_bg_periodic_task",
     darvasTaskKey,
     frequency: const Duration(minutes: 15),
     constraints: Constraints(networkType: NetworkType.connected),
-    existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
   );
 
   runApp(const DarvasProApp());
@@ -227,6 +227,13 @@ class VirtualPosition {
   });
 }
 
+class DarvasMainScreen extends StatefulWidget {
+  const DarvasMainScreen({super.key});
+
+  @override
+  State<DarvasMainScreen> createState() => _DarvasMainScreenState();
+}
+
 class _DarvasMainScreenState extends State<DarvasMainScreen> {
   double virtualCash = 100000.0;
   bool isScanning = false;
@@ -265,7 +272,9 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
     );
 
     final Uri tvWeb = Uri.parse("https://in.tradingview.com/chart/?symbol=NSE:$symbol");
-    await launchUrl(tvWeb, mode: LaunchMode.externalApplication);
+    try {
+      await launchUrl(tvWeb, mode: LaunchMode.externalApplication);
+    } catch (_) {}
   }
 
   void openBrokerApp(String symbol, String brokerName) async {
@@ -283,20 +292,13 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
     if (brokerName == "Dhan") {
       targetUri = Uri.parse("https://tv.dhan.co/?symbol=$symbol");
     } else if (brokerName == "Angel One") {
-      targetUri = Uri.parse("angelone://spark/search?query=$symbol");
+      targetUri = Uri.parse("https://trade.angelone.in/");
     } else {
-      targetUri = Uri.parse("paytmmoney://stocks/detail?symbol=$symbol");
+      targetUri = Uri.parse("https://www.paytmmoney.com/stocks");
     }
 
     try {
-      final launched = await launchUrl(targetUri, mode: LaunchMode.externalApplication);
-      if (!launched) {
-        if (brokerName == "Angel One") {
-          await launchUrl(Uri.parse("https://trade.angelone.in/"), mode: LaunchMode.externalApplication);
-        } else if (brokerName == "Paytm Money") {
-          await launchUrl(Uri.parse("https://www.paytmmoney.com/stocks"), mode: LaunchMode.externalApplication);
-        }
-      }
+      await launchUrl(targetUri, mode: LaunchMode.externalApplication);
     } catch (_) {}
   }
 
@@ -758,7 +760,6 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             double addLevel = boxTop + boxHeight;
             double nextTarget = addLevel + (boxHeight * 2);
 
-            // पोर्टफोलियो में मौजूद शेयरों का लाइव भाव और ट्रेलिंग स्टॉप-लॉस अपडेट करना
             for (var pos in portfolioPositions) {
               if (pos.symbol == symbol) {
                 pos.currentPrice = currentPrice;
