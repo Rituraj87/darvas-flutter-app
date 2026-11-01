@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -120,7 +121,7 @@ void callbackDispatcher() {
             } else if (currentPrice < boxBottom) {
               await triggerNotification(
                 "🔴 EXIT ALERT: $symbol @ ₹${currentPrice.toStringAsFixed(1)}",
-                "बॉक्स बॉटम टूट गया है! तुरंत बाहर निकलें।",
+                "बॉक्स बॉटम टूटा! तुरंत बाहर निकलें।",
               );
             }
           }
@@ -151,7 +152,6 @@ void main() async {
     isInDebugMode: false,
   );
 
-  // Background Periodic Task (बिना किसी conflicting policy के सुरक्षित रूप से)
   await Workmanager().registerPeriodicTask(
     "darvas_bg_periodic_task",
     darvasTaskKey,
@@ -209,15 +209,18 @@ class DarvasSignal {
   });
 }
 
+// सक्रिय ओपन पोजीशन मॉडल
 class VirtualPosition {
+  final String id;
   final String symbol;
   final double buyPrice;
   double currentPrice;
   double currentSL;
   int qty;
-  final DateTime buyTime;
+  final String buyTime;
 
   VirtualPosition({
+    required this.id,
     required this.symbol,
     required this.buyPrice,
     required this.currentPrice,
@@ -225,6 +228,71 @@ class VirtualPosition {
     required this.qty,
     required this.buyTime,
   });
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'symbol': symbol,
+        'buyPrice': buyPrice,
+        'currentPrice': currentPrice,
+        'currentSL': currentSL,
+        'qty': qty,
+        'buyTime': buyTime,
+      };
+
+  factory VirtualPosition.fromMap(Map<String, dynamic> map) => VirtualPosition(
+        id: map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        symbol: map['symbol'],
+        buyPrice: (map['buyPrice'] as num).toDouble(),
+        currentPrice: (map['currentPrice'] as num).toDouble(),
+        currentSL: (map['currentSL'] as num).toDouble(),
+        qty: map['qty'] as int,
+        buyTime: map['buyTime'] ?? '',
+      );
+}
+
+// बंद ट्रेड हिस्ट्री मॉडल (स्थायी रिकॉर्ड)
+class TradeHistoryItem {
+  final String id;
+  final String symbol;
+  final double buyPrice;
+  final double sellPrice;
+  final int qty;
+  final double pnl;
+  final String buyTime;
+  final String sellTime;
+
+  TradeHistoryItem({
+    required this.id,
+    required this.symbol,
+    required this.buyPrice,
+    required this.sellPrice,
+    required this.qty,
+    required this.pnl,
+    required this.buyTime,
+    required this.sellTime,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'symbol': symbol,
+        'buyPrice': buyPrice,
+        'sellPrice': sellPrice,
+        'qty': qty,
+        'pnl': pnl,
+        'buyTime': buyTime,
+        'sellTime': sellTime,
+      };
+
+  factory TradeHistoryItem.fromMap(Map<String, dynamic> map) => TradeHistoryItem(
+        id: map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        symbol: map['symbol'],
+        buyPrice: (map['buyPrice'] as num).toDouble(),
+        sellPrice: (map['sellPrice'] as num).toDouble(),
+        qty: map['qty'] as int,
+        pnl: (map['pnl'] as num).toDouble(),
+        buyTime: map['buyTime'] ?? '',
+        sellTime: map['sellTime'] ?? '',
+      );
 }
 
 class DarvasMainScreen extends StatefulWidget {
@@ -239,13 +307,45 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
   bool isScanning = false;
   String marketStatus = "मार्केट जाँचा जा रहा है...";
   List<DarvasSignal> signalList = [];
-  List<VirtualPosition> portfolioPositions = [];
+  List<VirtualPosition> activePositions = [];
+  List<TradeHistoryItem> tradeHistory = [];
 
   @override
   void initState() {
     super.initState();
+    loadStoredUserData();
     updateMarketStatusMessage();
     runFullDarvasScan();
+  }
+
+  // डेटाबेस (SharedPreferences) से स्थायी डेटा लोड करना
+  Future<void> loadStoredUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      virtualCash = prefs.getDouble('virtual_cash') ?? 100000.0;
+
+      final activeStr = prefs.getString('active_positions');
+      if (activeStr != null && activeStr.isNotEmpty) {
+        final List decoded = json.decode(activeStr);
+        activePositions = decoded.map((e) => VirtualPosition.fromMap(e)).toList();
+      }
+
+      final histStr = prefs.getString('trade_history');
+      if (histStr != null && histStr.isNotEmpty) {
+        final List decoded = json.decode(histStr);
+        tradeHistory = decoded.map((e) => TradeHistoryItem.fromMap(e)).toList();
+      }
+    });
+  }
+
+  // डेटाबेस में स्थायी रूप से सेव करना
+  Future<void> saveStoredUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('virtual_cash', virtualCash);
+    await prefs.setString(
+        'active_positions', json.encode(activePositions.map((e) => e.toMap()).toList()));
+    await prefs.setString(
+        'trade_history', json.encode(tradeHistory.map((e) => e.toMap()).toList()));
   }
 
   void updateMarketStatusMessage() {
@@ -261,6 +361,7 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
     });
   }
 
+  // 1. ट्रेडिंगव्यू में सीधा लाइव चार्ट खोलना
   Future<void> openTradingView(String symbol) async {
     await Clipboard.setData(ClipboardData(text: symbol));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -271,38 +372,24 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
       ),
     );
 
-    final Uri tvWeb = Uri.parse("https://in.tradingview.com/chart/?symbol=NSE:$symbol");
+    // सीधे ट्रेडिंगव्यू ऐप या वेब चार्ट को शेयर सिंबल के साथ खोलना
+    final Uri tvAppUri = Uri.parse("tradingview://chart?symbol=NSE:$symbol");
+    final Uri tvWebUri = Uri.parse("https://in.tradingview.com/chart/?symbol=NSE:$symbol");
+
     try {
-      await launchUrl(tvWeb, mode: LaunchMode.externalApplication);
-    } catch (_) {}
-  }
-
-  void openBrokerApp(String symbol, String brokerName) async {
-    await Clipboard.setData(ClipboardData(text: symbol));
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("📋 '$symbol' कॉपी हो गया है! $brokerName में पेस्ट करें।"),
-        backgroundColor: const Color(0xFF10B981),
-        duration: const Duration(seconds: 3),
-      ),
-    );
-
-    Uri targetUri;
-    if (brokerName == "Dhan") {
-      targetUri = Uri.parse("https://tv.dhan.co/?symbol=$symbol");
-    } else if (brokerName == "Angel One") {
-      targetUri = Uri.parse("https://trade.angelone.in/");
-    } else {
-      targetUri = Uri.parse("https://www.paytmmoney.com/stocks");
+      final launched = await launchUrl(tvAppUri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        await launchUrl(tvWebUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      await launchUrl(tvWebUri, mode: LaunchMode.externalApplication);
     }
-
-    try {
-      await launchUrl(targetUri, mode: LaunchMode.externalApplication);
-    } catch (_) {}
   }
 
-  void showBrokerSelectionSheet(String symbol) {
+  // 2. डीमैट ऐप लॉन्चर व नेटिव एंड्रॉइड ऐप चूसर
+  void handleDematAction(String symbol) {
+    Clipboard.setData(ClipboardData(text: symbol));
+
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1C2541),
@@ -316,49 +403,106 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                "🚀 $symbol ट्रेड करें",
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("🚀 $symbol ट्रेड करें",
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.green.withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
+                    child: const Text("सिंबल कॉपीड", style: TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                  )
+                ],
               ),
               const SizedBox(height: 6),
-              const Text("अपना डीमैट ब्रोकर चुनें (शेयर नाम स्वतः कॉपी रहेगा):",
+              const Text("अपने मोबाइल का कोई भी ट्रेडिंग ऐप चुनें:",
                   style: TextStyle(color: Colors.white70, fontSize: 13)),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
+              // मोबाइल में मौजूद सभी ऐप्स के लिए नेटिव चूसर
               ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                tileColor: const Color(0xFF0B132B),
-                leading: const Icon(Icons.flash_on, color: Color(0xFF10B981), size: 28),
-                title: const Text("Dhan (धन ऐप)", style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text("फास्ट ट्रेडिंग व चार्ट टर्मिनल"),
-                onTap: () {
+                tileColor: const Color(0xFF2E3856),
+                leading: const Icon(Icons.share, color: Colors.amberAccent, size: 28),
+                title: const Text("अन्य सभी ऐप्स में खोजें (App Chooser)", style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text("मोबाइल के किसी भी ऐप में सिंबल शेयर व सर्च करें"),
+                onTap: () async {
                   Navigator.pop(ctx);
-                  openBrokerApp(symbol, "Dhan");
+                  final uri = Uri.parse("intent:#Intent;action=android.intent.action.SEND;type=text/plain;S.android.intent.extra.TEXT=$symbol;end");
+                  try {
+                    await launchUrl(uri);
+                  } catch (_) {}
                 },
               ),
-              const SizedBox(height: 10),
-              ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                tileColor: const Color(0xFF0B132B),
-                leading: const Icon(Icons.account_balance_wallet, color: Colors.blueAccent, size: 28),
-                title: const Text("Angel One (एंजेल वन)", style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text("एंजेल वन स्पार्क में ऑर्डर लगाएं"),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  openBrokerApp(symbol, "Angel One");
-                },
+              const SizedBox(height: 8),
+
+              // प्रमुख ब्रोकर्स के डायरेक्ट लिंक
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0038FF)),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        launchUrl(Uri.parse("angelone://spark/search?query=$symbol"), mode: LaunchMode.externalApplication)
+                            .catchError((_) => launchUrl(Uri.parse("https://trade.angelone.in/")));
+                      },
+                      child: const Text("Angel One", style: TextStyle(color: Colors.white, fontSize: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        launchUrl(Uri.parse("dhan://trade/$symbol"), mode: LaunchMode.externalApplication)
+                            .catchError((_) => launchUrl(Uri.parse("https://tv.dhan.co/?symbol=$symbol")));
+                      },
+                      child: const Text("Dhan", style: TextStyle(color: Colors.white, fontSize: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00B9F1)),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        launchUrl(Uri.parse("paytmmoney://stocks/detail?symbol=$symbol"), mode: LaunchMode.externalApplication)
+                            .catchError((_) => launchUrl(Uri.parse("https://www.paytmmoney.com/stocks")));
+                      },
+                      child: const Text("Paytm", style: TextStyle(color: Colors.white, fontSize: 12)),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 10),
-              ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                tileColor: const Color(0xFF0B132B),
-                leading: const Icon(Icons.payments, color: Colors.cyanAccent, size: 28),
-                title: const Text("Paytm Money (पेटीएम)", style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text("पेटीएम मनी स्टॉक्स में खोजें"),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  openBrokerApp(symbol, "Paytm Money");
-                },
-              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        launchUrl(Uri.parse("kite://"), mode: LaunchMode.externalApplication)
+                            .catchError((_) => launchUrl(Uri.parse("https://kite.zerodha.com/")));
+                      },
+                      child: const Text("Zerodha Kite", style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        launchUrl(Uri.parse("groww://"), mode: LaunchMode.externalApplication)
+                            .catchError((_) => launchUrl(Uri.parse("https://groww.in/stocks")));
+                      },
+                      child: const Text("Groww", style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                ],
+              )
             ],
           ),
         );
@@ -366,7 +510,8 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
     );
   }
 
-  void showOrderExecutionDialog(DarvasSignal s) {
+  // वर्चुअल शेयर खरीदना (बाय आर्डर)
+  void executeBuyOrder(DarvasSignal s) {
     int orderQty = s.suggestedQty;
     double totalCost = s.currentPrice * orderQty;
 
@@ -448,22 +593,28 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 ),
                 onPressed: virtualCash >= totalCost
-                    ? () {
+                    ? () async {
+                        final now = DateTime.now();
+                        final timeString = "${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}";
+
                         setState(() {
                           virtualCash -= totalCost;
-                          portfolioPositions.add(VirtualPosition(
+                          activePositions.add(VirtualPosition(
+                            id: DateTime.now().millisecondsSinceEpoch.toString(),
                             symbol: s.symbol,
                             buyPrice: s.currentPrice,
                             currentPrice: s.currentPrice,
                             currentSL: s.stopLoss,
                             qty: orderQty,
-                            buyTime: DateTime.now(),
+                            buyTime: timeString,
                           ));
                         });
+
+                        await saveStoredUserData();
                         Navigator.pop(ctx);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text("✅ ${s.symbol} के $orderQty शेयर पोर्टफोलियो में सफलतापूर्वक जोड़े गए!"),
+                            content: Text("✅ ${s.symbol} ($orderQty शेयर्स) स्थायी पोर्टफोलियो में सुरक्षित जुड़ गया!"),
                             backgroundColor: const Color(0xFF10B981),
                           ),
                         );
@@ -478,19 +629,38 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
     );
   }
 
-  void exitVirtualTrade(VirtualPosition pos) {
-    double saleProceeds = pos.currentPrice * pos.qty;
-    double pnl = (pos.currentPrice - pos.buyPrice) * pos.qty;
+  // पोजीशन बेचना (एग्जिट) और हिस्ट्री में हमेशा के लिए दर्ज करना
+  Future<void> exitPositionAndRecordHistory(VirtualPosition pos) async {
+    final now = DateTime.now();
+    final timeString = "${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}";
+    final double saleProceeds = pos.currentPrice * pos.qty;
+    final double pnl = (pos.currentPrice - pos.buyPrice) * pos.qty;
 
     setState(() {
       virtualCash += saleProceeds;
-      portfolioPositions.remove(pos);
+      activePositions.removeWhere((item) => item.id == pos.id);
+
+      tradeHistory.insert(
+        0,
+        TradeHistoryItem(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          symbol: pos.symbol,
+          buyPrice: pos.buyPrice,
+          sellPrice: pos.currentPrice,
+          qty: pos.qty,
+          pnl: pnl,
+          buyTime: pos.buyTime,
+          sellTime: timeString,
+        ),
+      );
     });
+
+    await saveStoredUserData();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          "🚪 ${pos.symbol} एग्जिट! बुक किया गया P&L: ₹${pnl.toStringAsFixed(2)}",
+          "🚪 ${pos.symbol} एग्जिट! P&L: ₹${pnl.toStringAsFixed(2)} (हिस्ट्री में सेव हुआ)",
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: pnl >= 0 ? const Color(0xFF10B981) : Colors.redAccent,
@@ -498,188 +668,272 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
     );
   }
 
-  void openPortfolioScreen() {
+  // हिस्ट्री रिकॉर्ड डिलीट करना (उपयोगकर्ता के नियंत्रण में)
+  Future<void> deleteHistoryItem(String id) async {
+    setState(() {
+      tradeHistory.removeWhere((item) => item.id == id);
+    });
+    await saveStoredUserData();
+  }
+
+  // डीमैट व ट्रेड हिस्ट्री संपूर्ण स्क्रीन
+  void openDematPortfolioAndJournal() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => StatefulBuilder(
-          builder: (context, setPortfolioState) {
-            double totalInvested = 0;
-            double currentHoldingValue = 0;
+        builder: (context) => DefaultTabController(
+          length: 2,
+          child: StatefulBuilder(
+            builder: (context, setTabState) {
+              double totalInvested = 0;
+              double currentHoldingValue = 0;
 
-            for (var pos in portfolioPositions) {
-              totalInvested += (pos.buyPrice * pos.qty);
-              currentHoldingValue += (pos.currentPrice * pos.qty);
-            }
+              for (var pos in activePositions) {
+                totalInvested += (pos.buyPrice * pos.qty);
+                currentHoldingValue += (pos.currentPrice * pos.qty);
+              }
 
-            double totalPortfolioValue = virtualCash + currentHoldingValue;
-            double totalUnrealizedPnL = currentHoldingValue - totalInvested;
-            double pnlPercent = totalInvested > 0 ? (totalUnrealizedPnL / totalInvested) * 100 : 0.0;
-            bool isOverallProfit = totalUnrealizedPnL >= 0;
+              double totalPortfolioValue = virtualCash + currentHoldingValue;
+              double totalUnrealizedPnL = currentHoldingValue - totalInvested;
+              double pnlPercent = totalInvested > 0 ? (totalUnrealizedPnL / totalInvested) * 100 : 0.0;
+              bool isOverallProfit = totalUnrealizedPnL >= 0;
 
-            return Scaffold(
-              appBar: AppBar(
-                title: const Text("💼 डीमैट पोर्टफोलियो (वर्चुअल)"),
-                backgroundColor: const Color(0xFF1C2541),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    tooltip: "भाव रीफ्रेश करें",
-                    onPressed: () async {
-                      await runFullDarvasScan();
-                      setPortfolioState(() {});
-                    },
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text("💼 डीमैट टर्मिनल व ट्रेड जर्नल"),
+                  backgroundColor: const Color(0xFF1C2541),
+                  bottom: const TabBar(
+                    indicatorColor: Color(0xFF10B981),
+                    tabs: [
+                      Tab(icon: Icon(Icons.show_chart), text: "एक्टिव ट्रेड्स"),
+                      Tab(icon: Icon(Icons.history_edu), text: "ट्रेड हिस्ट्री (जर्नल)"),
+                    ],
                   ),
-                ],
-              ),
-              body: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF111D4A),
-                      borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-                    ),
-                    child: Column(
+                ),
+                body: TabBarView(
+                  children: [
+                    // टैब 1: एक्टिव ट्रेड्स (Active Positions)
+                    Column(
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text("कुल पोर्टफोलियो मूल्य", style: TextStyle(color: Colors.white70, fontSize: 13)),
-                            Text("₹${totalPortfolioValue.toStringAsFixed(2)}",
-                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text("इन्वेस्टेड राशि", style: TextStyle(color: Colors.white60, fontSize: 12)),
-                                const SizedBox(height: 3),
-                                Text("₹${totalInvested.toStringAsFixed(1)}",
-                                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text("उपलब्ध कैश", style: TextStyle(color: Colors.white60, fontSize: 12)),
-                                const SizedBox(height: 3),
-                                Text("₹${virtualCash.toStringAsFixed(1)}",
-                                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
-                              ],
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                const Text("कुल लाभ/हानि (P&L)", style: TextStyle(color: Colors.white60, fontSize: 12)),
-                                const SizedBox(height: 3),
-                                Text(
-                                  "${isOverallProfit ? '+' : ''}₹${totalUnrealizedPnL.toStringAsFixed(1)} (${pnlPercent.toStringAsFixed(2)}%)",
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    color: isOverallProfit ? const Color(0xFF10B981) : Colors.redAccent,
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          color: const Color(0xFF111D4A),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text("कुल पोर्टफोलियो मूल्य", style: TextStyle(color: Colors.white70, fontSize: 13)),
+                                  Text("₹${totalPortfolioValue.toStringAsFixed(2)}",
+                                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text("इन्वेस्टेड राशि", style: TextStyle(color: Colors.white60, fontSize: 12)),
+                                      Text("₹${totalInvested.toStringAsFixed(1)}",
+                                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                                    ],
                                   ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text("उपलब्ध कैश", style: TextStyle(color: Colors.white60, fontSize: 12)),
+                                      Text("₹${virtualCash.toStringAsFixed(1)}",
+                                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                                    ],
+                                  ),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      const Text("कुल अनरियलाइज्ड P&L", style: TextStyle(color: Colors.white60, fontSize: 12)),
+                                      Text(
+                                        "${isOverallProfit ? '+' : ''}₹${totalUnrealizedPnL.toStringAsFixed(1)} (${pnlPercent.toStringAsFixed(2)}%)",
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: isOverallProfit ? const Color(0xFF10B981) : Colors.redAccent,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: activePositions.isEmpty
+                              ? const Center(
+                                  child: Text("कोई सक्रिय पोजीशन नहीं है!\nहोम स्क्रीन पर किसी भी शेयर के 'वर्चुअल खरीदें' से ट्रेड लें।",
+                                      textAlign: TextAlign.center, style: TextStyle(color: Colors.white60, height: 1.5)),
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.all(12),
+                                  itemCount: activePositions.length,
+                                  itemBuilder: (context, index) {
+                                    final pos = activePositions[index];
+                                    final pnl = (pos.currentPrice - pos.buyPrice) * pos.qty;
+                                    final itemPnlPercent = ((pos.currentPrice - pos.buyPrice) / pos.buyPrice) * 100;
+                                    final isProfit = pnl >= 0;
+
+                                    return Card(
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                      margin: const EdgeInsets.symmetric(vertical: 8),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Text(pos.symbol, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                  decoration: BoxDecoration(
+                                                    color: (isProfit ? const Color(0xFF10B981) : Colors.redAccent).withOpacity(0.2),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: Text(
+                                                    "${isProfit ? '+' : ''}₹${pnl.toStringAsFixed(1)} (${itemPnlPercent.toStringAsFixed(2)}%)",
+                                                    style: TextStyle(
+                                                      color: isProfit ? const Color(0xFF10B981) : Colors.redAccent,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Text("खरीद: ₹${pos.buyPrice.toStringAsFixed(1)}", style: const TextStyle(color: Colors.white70)),
+                                                Text("LTP: ₹${pos.currentPrice.toStringAsFixed(1)}",
+                                                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                                                Text("मात्रा: ${pos.qty} Sh.", style: const TextStyle(color: Colors.white70)),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Text("🛑 ट्रेलिंग SL: ₹${pos.currentSL.toStringAsFixed(1)}",
+                                                    style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+                                                Text("समय: ${pos.buyTime}", style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                                              ],
+                                            ),
+                                            const Divider(height: 18),
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: OutlinedButton.icon(
+                                                    onPressed: () => openTradingView(pos.symbol),
+                                                    icon: const Icon(Icons.show_chart, size: 16),
+                                                    label: const Text("चार्ट"),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: ElevatedButton.icon(
+                                                    onPressed: () async {
+                                                      await exitPositionAndRecordHistory(pos);
+                                                      setTabState(() {});
+                                                      setState(() {});
+                                                    },
+                                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                                                    icon: const Icon(Icons.close, size: 16, color: Colors.white),
+                                                    label: const Text("Exit Position", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
-                              ],
-                            ),
-                          ],
                         ),
                       ],
                     ),
-                  ),
-                  Expanded(
-                    child: portfolioPositions.isEmpty
+
+                    // टैब 2: ट्रेड हिस्ट्री (Trade History / Journal - कभी गायब न होने वाला रिकॉर्ड)
+                    tradeHistory.isEmpty
                         ? const Center(
                             child: Text(
-                              "कोई एक्टिव ट्रेड नहीं है!\nहोम स्क्रीन पर किसी भी शेयर के 'वर्चुअल खरीदें' बटन से ट्रेड लें।",
+                              "अभी तक कोई ट्रेड क्लोज नहीं हुआ है।\nजब भी आप कोई पोजीशन बेचेंगे, उसका पूरा लाभ/हानि रिकॉर्ड यहाँ स्थायी रूप से दर्ज रहेगा।",
                               textAlign: TextAlign.center,
                               style: TextStyle(color: Colors.white60, height: 1.5),
                             ),
                           )
                         : ListView.builder(
                             padding: const EdgeInsets.all(12),
-                            itemCount: portfolioPositions.length,
+                            itemCount: tradeHistory.length,
                             itemBuilder: (context, index) {
-                              final pos = portfolioPositions[index];
-                              final pnl = (pos.currentPrice - pos.buyPrice) * pos.qty;
-                              final itemPnlPercent = ((pos.currentPrice - pos.buyPrice) / pos.buyPrice) * 100;
-                              final isProfit = pnl >= 0;
+                              final item = tradeHistory[index];
+                              final isProfit = item.pnl >= 0;
 
                               return Card(
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                margin: const EdgeInsets.symmetric(vertical: 8),
+                                margin: const EdgeInsets.symmetric(vertical: 6),
                                 child: Padding(
-                                  padding: const EdgeInsets.all(16),
+                                  padding: const EdgeInsets.all(14),
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Text(pos.symbol, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: (isProfit ? const Color(0xFF10B981) : Colors.redAccent).withOpacity(0.2),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: Text(
-                                              "${isProfit ? '+' : ''}₹${pnl.toStringAsFixed(1)} (${itemPnlPercent.toStringAsFixed(2)}%)",
-                                              style: TextStyle(
-                                                color: isProfit ? const Color(0xFF10B981) : Colors.redAccent,
-                                                fontWeight: FontWeight.bold,
+                                          Text(item.symbol, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                          Row(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: (isProfit ? const Color(0xFF10B981) : Colors.redAccent).withOpacity(0.2),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Text(
+                                                  "${isProfit ? '+' : ''}₹${item.pnl.toStringAsFixed(1)}",
+                                                  style: TextStyle(
+                                                    color: isProfit ? const Color(0xFF10B981) : Colors.redAccent,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
                                               ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text("क्वांटिटी: ${pos.qty} शेयर्स", style: const TextStyle(color: Colors.white70)),
-                                          Text("बाय प्राइस: ₹${pos.buyPrice.toStringAsFixed(1)}", style: const TextStyle(color: Colors.white70)),
-                                          Text("LTP: ₹${pos.currentPrice.toStringAsFixed(1)}",
-                                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.cyanAccent)),
+                                              IconButton(
+                                                icon: const Icon(Icons.delete_outline, size: 20, color: Colors.white38),
+                                                onPressed: () async {
+                                                  await deleteHistoryItem(item.id);
+                                                  setTabState(() {});
+                                                  setState(() {});
+                                                },
+                                              ),
+                                            ],
+                                          )
                                         ],
                                       ),
                                       const SizedBox(height: 6),
                                       Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Text("🛑 ट्रेलिंग SL: ₹${pos.currentSL.toStringAsFixed(1)}",
-                                              style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
-                                          Text("करंट वैल्यू: ₹${(pos.currentPrice * pos.qty).toStringAsFixed(1)}",
-                                              style: const TextStyle(color: Colors.white)),
+                                          Text("बाय: ₹${item.buyPrice.toStringAsFixed(1)}", style: const TextStyle(color: Colors.white70)),
+                                          Text("सेल: ₹${item.sellPrice.toStringAsFixed(1)}", style: const TextStyle(color: Colors.white70)),
+                                          Text("मात्रा: ${item.qty} Sh.", style: const TextStyle(color: Colors.white70)),
                                         ],
                                       ),
-                                      const Divider(height: 20),
+                                      const SizedBox(height: 4),
                                       Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Expanded(
-                                            child: OutlinedButton.icon(
-                                              onPressed: () => openTradingView(pos.symbol),
-                                              icon: const Icon(Icons.show_chart, size: 16),
-                                              label: const Text("चार्ट"),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: ElevatedButton.icon(
-                                              onPressed: () {
-                                                exitVirtualTrade(pos);
-                                                setPortfolioState(() {});
-                                                setState(() {});
-                                              },
-                                              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-                                              icon: const Icon(Icons.close, size: 16, color: Colors.white),
-                                              label: const Text("Exit Position", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                            ),
-                                          ),
+                                          Text("बाय: ${item.buyTime}", style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                                          Text("सेल: ${item.sellTime}", style: const TextStyle(fontSize: 11, color: Colors.white54)),
                                         ],
                                       ),
                                     ],
@@ -688,16 +942,17 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                               );
                             },
                           ),
-                  ),
-                ],
-              ),
-            );
-          },
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
+  // लाइव डार्वस स्कैन व ऑटो ट्रेलिंग स्टॉप-लॉस
   Future<void> runFullDarvasScan() async {
     if (isScanning) return;
     setState(() => isScanning = true);
@@ -760,7 +1015,8 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             double addLevel = boxTop + boxHeight;
             double nextTarget = addLevel + (boxHeight * 2);
 
-            for (var pos in portfolioPositions) {
+            // एक्टिव ओपन पोजीशन का लाइव भाव और ट्रेलिंग स्टॉप-लॉस अपडेट करना
+            for (var pos in activePositions) {
               if (pos.symbol == symbol) {
                 pos.currentPrice = currentPrice;
                 if (currentPrice > addLevel && pos.currentSL < boxTop) {
@@ -827,6 +1083,8 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
       } catch (_) {}
     }
 
+    await saveStoredUserData();
+
     setState(() {
       signalList = tempResults;
       isScanning = false;
@@ -844,11 +1102,11 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             alignment: Alignment.center,
             children: [
               IconButton(
-                tooltip: "डीमैट पोर्टफोलियो",
+                tooltip: "डीमैट पोर्टफोलियो व जर्नल",
                 icon: const Icon(Icons.account_balance_wallet, color: Color(0xFF10B981), size: 26),
-                onPressed: openPortfolioScreen,
+                onPressed: openDematPortfolioAndJournal,
               ),
-              if (portfolioPositions.isNotEmpty)
+              if (activePositions.isNotEmpty)
                 Positioned(
                   right: 6,
                   top: 6,
@@ -856,7 +1114,7 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                     radius: 9,
                     backgroundColor: Colors.redAccent,
                     child: Text(
-                      '${portfolioPositions.length}',
+                      '${activePositions.length}',
                       style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -988,12 +1246,14 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
             const SizedBox(height: 14),
             const Divider(height: 1, color: Colors.white12),
             const SizedBox(height: 10),
+
+            // तीनों मुख्य एक्शन बटन
             Row(
               children: [
                 Expanded(
                   flex: 3,
                   child: ElevatedButton(
-                    onPressed: () => showOrderExecutionDialog(s),
+                    onPressed: () => executeBuyOrder(s),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF10B981),
                       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1025,7 +1285,7 @@ class _DarvasMainScreenState extends State<DarvasMainScreen> {
                 Expanded(
                   flex: 2,
                   child: OutlinedButton(
-                    onPressed: () => showBrokerSelectionSheet(s.symbol),
+                    onPressed: () => handleDematAction(s.symbol),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       side: const BorderSide(color: Colors.orangeAccent),
