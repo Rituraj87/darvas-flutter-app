@@ -177,23 +177,77 @@ void main() async {
   runApp(const DarvasProApp());
 }
 
-class DarvasProApp extends StatelessWidget {
+class DarvasProApp extends StatefulWidget {
   const DarvasProApp({super.key});
+
+  @override
+  State<DarvasProApp> createState() => _DarvasProAppState();
+}
+
+class _DarvasProAppState extends State<DarvasProApp> {
+  // थीम मोड: Phone Default, Dark, Light
+  ThemeMode _themeMode = ThemeMode.system;
+
+  void _toggleTheme() {
+    setState(() {
+      if (_themeMode == ThemeMode.dark) {
+        _themeMode = ThemeMode.light;
+      } else if (_themeMode == ThemeMode.light) {
+        _themeMode = ThemeMode.system;
+      } else {
+        _themeMode = ThemeMode.dark;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Darvas Pro Terminal',
-      theme: ThemeData.dark().copyWith(
+      themeMode: _themeMode,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF1F5F9),
+        cardColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: Color(0xFF0F172A),
+          elevation: 1,
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: Colors.white,
+          selectedItemColor: Color(0xFF059669),
+          unselectedItemColor: Colors.black54,
+        ),
+        colorScheme: const ColorScheme.light(
+          primary: Color(0xFF059669),
+          secondary: Color(0xFF0284C7),
+        ),
+      ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF0A0E17),
         cardColor: const Color(0xFF141C2E),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF101726),
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: Color(0xFF101726),
+          selectedItemColor: Color(0xFF00E676),
+          unselectedItemColor: Colors.white54,
+        ),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF00E676),
           secondary: Color(0xFF00B0FF),
         ),
       ),
-      home: const DarvasTerminalScreen(),
+      home: DarvasTerminalScreen(
+        onToggleTheme: _toggleTheme,
+        currentThemeMode: _themeMode,
+      ),
     );
   }
 }
@@ -236,6 +290,7 @@ class VirtualPosition {
   final double buyPrice;
   double currentPrice;
   double currentSL;
+  final double targetPrice; // टारगेट पॉइंट
   int qty;
   final String buyTime;
 
@@ -245,6 +300,7 @@ class VirtualPosition {
     required this.buyPrice,
     required this.currentPrice,
     required this.currentSL,
+    required this.targetPrice,
     required this.qty,
     required this.buyTime,
   });
@@ -255,6 +311,7 @@ class VirtualPosition {
         'buyPrice': buyPrice,
         'currentPrice': currentPrice,
         'currentSL': currentSL,
+        'targetPrice': targetPrice,
         'qty': qty,
         'buyTime': buyTime,
       };
@@ -265,6 +322,7 @@ class VirtualPosition {
         buyPrice: (map['buyPrice'] as num).toDouble(),
         currentPrice: (map['currentPrice'] as num).toDouble(),
         currentSL: (map['currentSL'] as num).toDouble(),
+        targetPrice: (map['targetPrice'] as num?)?.toDouble() ?? 0.0,
         qty: map['qty'] as int,
         buyTime: map['buyTime'] ?? '',
       );
@@ -275,6 +333,7 @@ class TradeHistoryItem {
   final String symbol;
   final double buyPrice;
   final double sellPrice;
+  final double targetPrice; // हिस्ट्री में टारगेट पॉइंट
   final int qty;
   final double pnl;
   final String buyTime;
@@ -285,6 +344,7 @@ class TradeHistoryItem {
     required this.symbol,
     required this.buyPrice,
     required this.sellPrice,
+    required this.targetPrice,
     required this.qty,
     required this.pnl,
     required this.buyTime,
@@ -296,17 +356,20 @@ class TradeHistoryItem {
         'symbol': symbol,
         'buyPrice': buyPrice,
         'sellPrice': sellPrice,
+        'targetPrice': targetPrice,
         'qty': qty,
         'pnl': pnl,
         'buyTime': buyTime,
         'sellTime': sellTime,
       };
 
-  factory TradeHistoryItem.fromMap(Map<String, dynamic> map) => TradeHistoryItem(
+  factory TradeHistoryItem.fromMap(Map<String, dynamic> map) =>
+      TradeHistoryItem(
         id: map['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
         symbol: map['symbol'],
         buyPrice: (map['buyPrice'] as num).toDouble(),
         sellPrice: (map['sellPrice'] as num).toDouble(),
+        targetPrice: (map['targetPrice'] as num?)?.toDouble() ?? 0.0,
         qty: map['qty'] as int,
         pnl: (map['pnl'] as num).toDouble(),
         buyTime: map['buyTime'] ?? '',
@@ -315,7 +378,14 @@ class TradeHistoryItem {
 }
 
 class DarvasTerminalScreen extends StatefulWidget {
-  const DarvasTerminalScreen({super.key});
+  final VoidCallback onToggleTheme;
+  final ThemeMode currentThemeMode;
+
+  const DarvasTerminalScreen({
+    super.key,
+    required this.onToggleTheme,
+    required this.currentThemeMode,
+  });
 
   @override
   State<DarvasTerminalScreen> createState() => _DarvasTerminalScreenState();
@@ -330,6 +400,10 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
   List<VirtualPosition> activePositions = [];
   List<TradeHistoryItem> tradeHistory = [];
 
+  // सर्च बार कंट्रोलर
+  final TextEditingController searchController = TextEditingController();
+  String searchQuery = "";
+
   @override
   void initState() {
     super.initState();
@@ -338,6 +412,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     runFullDarvasScan();
   }
 
+  // डेटा लोड करना + ऑटो-वॉल्ट रिकवरी
   Future<void> loadStoredUserData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -359,13 +434,23 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     });
   }
 
-  Future<void> saveStoredUserData() async {
+  // ऑटोमैटिक साइलेंट बैकअप सेविंग
+  Future<void> saveStoredUserDataAndAutoBackup() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('virtual_cash', virtualCash);
     await prefs.setString('active_positions',
         json.encode(activePositions.map((e) => e.toMap()).toList()));
     await prefs.setString('trade_history',
         json.encode(tradeHistory.map((e) => e.toMap()).toList()));
+
+    // ऑटोमैटिक वॉल्ट बैकअप
+    final autoBackupVault = {
+      'virtualCash': virtualCash,
+      'activePositions': activePositions.map((e) => e.toMap()).toList(),
+      'tradeHistory': tradeHistory.map((e) => e.toMap()).toList(),
+      'lastBackupTime': DateTime.now().toIso8601String(),
+    };
+    await prefs.setString('auto_backup_vault', json.encode(autoBackupVault));
   }
 
   void updateMarketStatusMessage() {
@@ -381,7 +466,6 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     });
   }
 
-  // ट्रेडिंगव्यू में सीधा लाइव चार्ट खोलना (Verified Deep-Link & Encoded Web Fallback)
   Future<void> openTradingView(String symbol) async {
     await Clipboard.setData(ClipboardData(text: symbol));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -392,7 +476,6 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
       ),
     );
 
-    // ट्रेडिंगव्यू ऐप व एनकोडेड यूआरएल (NSE:SYMBOL)
     final Uri tvAppUri = Uri.parse("tradingview://chart?symbol=NSE%3A$symbol");
     final Uri tvWebUri =
         Uri.parse("https://in.tradingview.com/chart/?symbol=NSE%3A$symbol");
@@ -408,17 +491,16 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     }
   }
 
-  // डीमैट ब्रोकर सेलेक्टर
   void handleDematAction(String symbol) {
     Clipboard.setData(ClipboardData(text: symbol));
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF141C2E),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: Column(
@@ -430,9 +512,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                 children: [
                   Text("🚀 $symbol ट्रेड करें",
                       style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white)),
+                          fontSize: 20, fontWeight: FontWeight.bold)),
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -450,12 +530,12 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
               ),
               const SizedBox(height: 6),
               const Text("शेयर का नाम कॉपी हो चुका है। अपना ऐप चुनें:",
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  style: TextStyle(fontSize: 13)),
               const SizedBox(height: 16),
               ListTile(
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
-                tileColor: const Color(0xFF1E293B),
+                tileColor: isDark ? const Color(0xFF1E293B) : Colors.grey[200],
                 leading: const Icon(Icons.share,
                     color: Colors.amberAccent, size: 28),
                 title: const Text("सभी ऐप्स में खोजें (Android Chooser)",
@@ -483,12 +563,13 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                       ),
                       onPressed: () {
                         Navigator.pop(ctx);
-                        launchUrl(Uri.parse("https://tv.dhan.co/?symbol=$symbol"),
+                        launchUrl(
+                                Uri.parse("https://tv.dhan.co/?symbol=$symbol"),
                                 mode: LaunchMode.externalApplication)
                             .catchError((_) => launchUrl(
                                 Uri.parse("dhan://trade/$symbol")));
                       },
-                      child: const Text("Dhan Terminal",
+                      child: const Text("Dhan",
                           style: TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -554,145 +635,6 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     );
   }
 
-  // बैकअप और रीस्टोर डायलॉग (डेटा कभी न खोने के लिए)
-  void showBackupRestoreDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF141C2E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("💾 डेटा बैकअप व रीस्टोर",
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "ऐप अपडेट करने या अनइंस्टॉल करने से पहले अपने सभी ट्रेड्स का बैकअप ले सकते हैं:",
-              style: TextStyle(fontSize: 13, color: Colors.white70),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00E676),
-                minimumSize: const Size.fromHeight(42),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-              icon: const Icon(Icons.copy, color: Colors.black),
-              label: const Text("बैकअप कोड कॉपी करें",
-                  style: TextStyle(
-                      color: Colors.black, fontWeight: FontWeight.bold)),
-              onPressed: () async {
-                final backupData = {
-                  'virtualCash': virtualCash,
-                  'activePositions':
-                      activePositions.map((e) => e.toMap()).toList(),
-                  'tradeHistory': tradeHistory.map((e) => e.toMap()).toList(),
-                };
-                await Clipboard.setData(
-                    ClipboardData(text: json.encode(backupData)));
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        "📋 बैकअप कोड कॉपी हो गया! इसे सुरक्षित रख लें।"),
-                    backgroundColor: Color(0xFF00E676),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(42),
-                side: const BorderSide(color: Color(0xFF00B0FF)),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-              icon: const Icon(Icons.restore, color: Color(0xFF00B0FF)),
-              label: const Text("पुराना बैकअप रीस्टोर करें",
-                  style: TextStyle(
-                      color: Color(0xFF00B0FF), fontWeight: FontWeight.bold)),
-              onPressed: () async {
-                Navigator.pop(ctx);
-                showRestoreInputDialog();
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child:
-                const Text("बंद करें", style: TextStyle(color: Colors.white54)),
-          )
-        ],
-      ),
-    );
-  }
-
-  void showRestoreInputDialog() {
-    final textController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF141C2E),
-        title: const Text("रीस्टोर कोड पेस्ट करें"),
-        content: TextField(
-          controller: textController,
-          maxLines: 4,
-          decoration: const InputDecoration(
-            hintText: "यहाँ कॉपी किया हुआ बैकअप कोड पेस्ट करें...",
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("रद्द करें"),
-          ),
-          ElevatedButton(
-            style:
-                ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00E676)),
-            onPressed: () async {
-              try {
-                final decoded = json.decode(textController.text.trim());
-                setState(() {
-                  virtualCash = (decoded['virtualCash'] as num).toDouble();
-                  final List act = decoded['activePositions'] ?? [];
-                  activePositions =
-                      act.map((e) => VirtualPosition.fromMap(e)).toList();
-                  final List hist = decoded['tradeHistory'] ?? [];
-                  tradeHistory =
-                      hist.map((e) => TradeHistoryItem.fromMap(e)).toList();
-                });
-                await saveStoredUserData();
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("✅ आपका सारा डेटा सफलतापूर्वक रीस्टोर हो गया!"),
-                    backgroundColor: Color(0xFF00E676),
-                  ),
-                );
-              } catch (_) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("❌ अमान्य बैकअप कोड!"),
-                    backgroundColor: Colors.redAccent,
-                  ),
-                );
-              }
-            },
-            child: const Text("रीस्टोर करें",
-                style: TextStyle(
-                    color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
   void executeBuyOrder(DarvasSignal s) {
     int orderQty = s.suggestedQty;
     double totalCost = s.currentPrice * orderQty;
@@ -702,7 +644,6 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            backgroundColor: const Color(0xFF141C2E),
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: Text("⚡ बाय ऑर्डर: ${s.symbol}",
@@ -716,7 +657,11 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                         fontSize: 16,
                         color: Color(0xFF00E676),
                         fontWeight: FontWeight.bold)),
-                const SizedBox(height: 14),
+                const SizedBox(height: 6),
+                Text("🎯 टारगेट 1: ₹${s.target1.toStringAsFixed(1)}",
+                    style: const TextStyle(
+                        fontSize: 13, color: Colors.amberAccent)),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -752,7 +697,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                     ),
                   ],
                 ),
-                const Divider(height: 20, color: Colors.white24),
+                const Divider(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -779,8 +724,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text("रद्द करें",
-                    style: TextStyle(color: Colors.white60)),
+                child: const Text("रद्द करें"),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -806,17 +750,18 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                             buyPrice: s.currentPrice,
                             currentPrice: s.currentPrice,
                             currentSL: s.stopLoss,
+                            targetPrice: s.target1,
                             qty: orderQty,
                             buyTime: timeString,
                           ));
                         });
 
-                        await saveStoredUserData();
+                        await saveStoredUserDataAndAutoBackup();
                         Navigator.pop(ctx);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                                "✅ ${s.symbol} ($orderQty शेयर्स) पोर्टफोलियो में सुरक्षित जुड़ गया!"),
+                                "✅ ${s.symbol} ($orderQty शेयर्स) ऑटो-बैकअप में सुरक्षित जुड़ गया!"),
                             backgroundColor: const Color(0xFF00E676),
                           ),
                         );
@@ -851,6 +796,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           symbol: pos.symbol,
           buyPrice: pos.buyPrice,
           sellPrice: pos.currentPrice,
+          targetPrice: pos.targetPrice,
           qty: pos.qty,
           pnl: pnl,
           buyTime: pos.buyTime,
@@ -859,12 +805,12 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
       );
     });
 
-    await saveStoredUserData();
+    await saveStoredUserDataAndAutoBackup();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          "🚪 ${pos.symbol} एग्जिट! P&L: ₹${pnl.toStringAsFixed(2)} (हिस्ट्री में सेव हुआ)",
+          "🚪 ${pos.symbol} एग्जिट! P&L: ₹${pnl.toStringAsFixed(2)} (ऑटो-सेव हुआ)",
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor:
@@ -877,10 +823,9 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     setState(() {
       tradeHistory.removeWhere((item) => item.id == id);
     });
-    await saveStoredUserData();
+    await saveStoredUserDataAndAutoBackup();
   }
 
-  // लाइव डार्वस स्कैन + 52-Week High + Volume Dry-Up + Wick Filter
   Future<void> runFullDarvasScan() async {
     if (isScanning) return;
     setState(() => isScanning = true);
@@ -946,8 +891,8 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
 
             double candleRange = currentHigh - currentLow;
             double upperWick = currentHigh - currentPrice;
-            bool isUpperWickExcessive =
-                candleRange > 0 && (upperWick / candleRange) > 0.35;
+            bool isCleanBody =
+                candleRange > 0 ? (upperWick / candleRange) <= 0.35 : true;
 
             double riskPerShare = (currentPrice - boxBottom).abs();
             if (riskPerShare < 1.0) riskPerShare = currentPrice * 0.02;
@@ -1063,7 +1008,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
       } catch (_) {}
     }
 
-    await saveStoredUserData();
+    await saveStoredUserDataAndAutoBackup();
 
     setState(() {
       signalList = tempResults;
@@ -1073,26 +1018,33 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    IconData themeIcon;
+    if (widget.currentThemeMode == ThemeMode.dark) {
+      themeIcon = Icons.dark_mode;
+    } else if (widget.currentThemeMode == ThemeMode.light) {
+      themeIcon = Icons.light_mode;
+    } else {
+      themeIcon = Icons.brightness_auto;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Row(
           children: [
             Icon(Icons.candlestick_chart, color: Color(0xFF00E676)),
             SizedBox(width: 8),
-            Text('DARVAS PRO TERMINAL',
+            Text('DARVAS PRO',
                 style: TextStyle(
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.1,
                     fontSize: 18)),
           ],
         ),
-        backgroundColor: const Color(0xFF101726),
-        elevation: 0,
         actions: [
           IconButton(
-            tooltip: "डेटा बैकअप",
-            icon: const Icon(Icons.cloud_sync, color: Color(0xFF00B0FF)),
-            onPressed: showBackupRestoreDialog,
+            tooltip: "डे/नाइट/सिस्टम थीम",
+            icon: Icon(themeIcon, color: const Color(0xFF00B0FF)),
+            onPressed: widget.onToggleTheme,
           ),
           IconButton(
             tooltip: "टेस्ट अलर्ट",
@@ -1101,7 +1053,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
             onPressed: () {
               triggerNotification(
                 "🔔 Darvas Terminal Active",
-                "बैकग्राउंड इंजन और अलर्ट सर्विस लाइव हैं!",
+                "बैकग्राउंड ऑटो-बैकअप और अलर्ट सिस्टम लाइव हैं!",
               );
             },
           ),
@@ -1121,9 +1073,6 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
         ),
         child: BottomNavigationBar(
           currentIndex: currentTabIndex,
-          backgroundColor: const Color(0xFF101726),
-          selectedItemColor: const Color(0xFF00E676),
-          unselectedItemColor: Colors.white54,
           selectedFontSize: 12,
           unselectedFontSize: 12,
           onTap: (index) => setState(() => currentTabIndex = index),
@@ -1137,7 +1086,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                 children: [
                   const Icon(Icons.account_balance_wallet),
                   if (activePositions.isNotEmpty)
-                    Positioned(
+                    const Positioned(
                       right: 0,
                       top: 0,
                       child: CircleAvatar(
@@ -1169,21 +1118,51 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     );
   }
 
-  // 1. लाइव स्कैनर टैब
+  // 1. लाइव स्कैनर टैब (सर्च बार के साथ)
   Widget buildScannerTab() {
+    final filteredSignals = signalList.where((s) {
+      return s.symbol.toLowerCase().contains(searchQuery.toLowerCase());
+    }).toList();
+
     return Column(
       children: [
+        // सर्च बार
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+          child: TextField(
+            controller: searchController,
+            decoration: InputDecoration(
+              hintText: "किसी भी शेयर का नाम सर्च करें (उदा. HAL, TRENT)...",
+              prefixIcon: const Icon(Icons.search, color: Color(0xFF00E676)),
+              suffixIcon: searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        searchController.clear();
+                        setState(() => searchQuery = "");
+                      },
+                    )
+                  : null,
+              filled: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            onChanged: (val) {
+              setState(() => searchQuery = val);
+            },
+          ),
+        ),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          color: const Color(0xFF141C2E),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(marketStatus,
                   style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white)),
+                      fontSize: 12, fontWeight: FontWeight.bold)),
               Text(
                 "कैश: ₹${virtualCash.toStringAsFixed(0)}",
                 style: const TextStyle(
@@ -1195,8 +1174,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           ),
         ),
         if (isScanning)
-          const LinearProgressIndicator(
-              color: Color(0xFF00E676), backgroundColor: Color(0xFF101726)),
+          const LinearProgressIndicator(color: Color(0xFF00E676)),
         Expanded(
           child: signalList.isEmpty && !isScanning
               ? Center(
@@ -1210,12 +1188,16 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                         backgroundColor: const Color(0xFF00E676)),
                   ),
                 )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: signalList.length,
-                  itemBuilder: (ctx, index) =>
-                      buildInteractiveStockCard(signalList[index]),
-                ),
+              : filteredSignals.isEmpty
+                  ? Center(
+                      child: Text("'$searchQuery' का कोई शेयर नहीं मिला।"),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: filteredSignals.length,
+                      itemBuilder: (ctx, index) =>
+                          buildInteractiveStockCard(filteredSignals[index]),
+                    ),
         ),
       ],
     );
@@ -1242,9 +1224,10 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
       children: [
         Container(
           padding: const EdgeInsets.all(18),
-          decoration: const BoxDecoration(
-            color: Color(0xFF141C2E),
-            borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius:
+                const BorderRadius.vertical(bottom: Radius.circular(24)),
           ),
           child: Column(
             children: [
@@ -1252,12 +1235,10 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text("कुल पोर्टफोलियो नेटवर्थ",
-                      style: TextStyle(color: Colors.white60, fontSize: 13)),
+                      style: TextStyle(fontSize: 13)),
                   Text("₹${totalPortfolioValue.toStringAsFixed(2)}",
                       style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white)),
+                          fontSize: 22, fontWeight: FontWeight.w900)),
                 ],
               ),
               const SizedBox(height: 14),
@@ -1268,8 +1249,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text("इन्वेस्टेड",
-                          style:
-                              TextStyle(color: Colors.white54, fontSize: 12)),
+                          style: TextStyle(fontSize: 12, color: Colors.grey)),
                       const SizedBox(height: 2),
                       Text("₹${totalInvested.toStringAsFixed(1)}",
                           style: const TextStyle(
@@ -1280,8 +1260,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text("कैश बैलेंस",
-                          style:
-                              TextStyle(color: Colors.white54, fontSize: 12)),
+                          style: TextStyle(fontSize: 12, color: Colors.grey)),
                       const SizedBox(height: 2),
                       Text("₹${virtualCash.toStringAsFixed(1)}",
                           style: const TextStyle(
@@ -1294,8 +1273,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       const Text("कुल P&L (अनरियलाइज्ड)",
-                          style:
-                              TextStyle(color: Colors.white54, fontSize: 12)),
+                          style: TextStyle(fontSize: 12, color: Colors.grey)),
                       const SizedBox(height: 2),
                       Text(
                         "${isOverallProfit ? '+' : ''}₹${totalUnrealizedPnL.toStringAsFixed(1)} (${pnlPercent.toStringAsFixed(2)}%)",
@@ -1320,7 +1298,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                   child: Text(
                       "कोई सक्रिय पोजीशन नहीं है!\nस्कैनर में जाकर 'वर्चुअल खरीदें' बटन से पोजीशन बनाएं।",
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white54, height: 1.6)),
+                      style: TextStyle(color: Colors.grey, height: 1.6)),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
@@ -1381,17 +1359,13 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                    "खरीद: ₹${pos.buyPrice.toStringAsFixed(1)}",
-                                    style:
-                                        const TextStyle(color: Colors.white70)),
+                                    "खरीद: ₹${pos.buyPrice.toStringAsFixed(1)}"),
                                 Text(
                                     "LTP: ₹${pos.currentPrice.toStringAsFixed(1)}",
                                     style: const TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: Color(0xFF00B0FF))),
-                                Text("मात्रा: ${pos.qty} शेयर्स",
-                                    style:
-                                        const TextStyle(color: Colors.white70)),
+                                Text("मात्रा: ${pos.qty} शेयर्स"),
                               ],
                             ),
                             const SizedBox(height: 6),
@@ -1403,12 +1377,14 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                                     style: const TextStyle(
                                         color: Colors.orangeAccent,
                                         fontWeight: FontWeight.bold)),
-                                Text("समय: ${pos.buyTime}",
+                                Text(
+                                    "🎯 Target: ₹${pos.targetPrice.toStringAsFixed(1)}",
                                     style: const TextStyle(
-                                        fontSize: 11, color: Colors.white54)),
+                                        color: Colors.amberAccent,
+                                        fontWeight: FontWeight.bold)),
                               ],
                             ),
-                            const Divider(height: 20, color: Colors.white12),
+                            const Divider(height: 20),
                             Row(
                               children: [
                                 Expanded(
@@ -1460,23 +1436,30 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     );
   }
 
-  // 3. ट्रेड जर्नल व हिस्ट्री टैब
+  // 3. ट्रेड जर्नल व हिस्ट्री टैब (टारगेट पॉइंट व ऑटो बैकअप के साथ)
   Widget buildJournalTab() {
     return Column(
       children: [
         Container(
           padding: const EdgeInsets.all(16),
-          color: const Color(0xFF141C2E),
+          color: Theme.of(context).cardColor,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text("📜 क्लोज्ड ट्रेड्स हिस्ट्री",
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white)),
-              Text("कुल ट्रेड्स: ${tradeHistory.length}",
-                  style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00E676).withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text("🛡️ ऑटो-बैकअप एक्टिव",
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF00E676),
+                        fontWeight: FontWeight.bold)),
+              ),
             ],
           ),
         ),
@@ -1484,9 +1467,9 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           child: tradeHistory.isEmpty
               ? const Center(
                   child: Text(
-                      "अभी तक कोई ट्रेड क्लोज नहीं हुआ है।\nजब भी आप कोई पोजीशन बेचेंगे, उसका पूरा लाभ/हानि रिकॉर्ड यहाँ स्थायी रहेगा।",
+                      "अभी तक कोई ट्रेड क्लोज नहीं हुआ है।\nजब भी आप कोई पोजीशन बेचेंगे, उसका पूरा लाभ/हानि व टारगेट रिकॉर्ड यहाँ हमेशा रहेगा।",
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white54, height: 1.6)),
+                      style: TextStyle(color: Colors.grey, height: 1.6)),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
@@ -1535,7 +1518,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline,
-                                          size: 18, color: Colors.white38),
+                                          size: 18, color: Colors.grey),
                                       onPressed: () =>
                                           deleteHistoryItem(item.id),
                                     ),
@@ -1547,28 +1530,28 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text("बाय: ₹${item.buyPrice.toStringAsFixed(1)}",
-                                    style:
-                                        const TextStyle(color: Colors.white70)),
                                 Text(
-                                    "सेल: ₹${item.sellPrice.toStringAsFixed(1)}",
-                                    style:
-                                        const TextStyle(color: Colors.white70)),
-                                Text("मात्रा: ${item.qty} Sh.",
-                                    style:
-                                        const TextStyle(color: Colors.white70)),
+                                    "बाय: ₹${item.buyPrice.toStringAsFixed(1)}"),
+                                Text(
+                                    "सेल: ₹${item.sellPrice.toStringAsFixed(1)}"),
+                                Text(
+                                    "🎯 Target: ₹${item.targetPrice.toStringAsFixed(1)}",
+                                    style: const TextStyle(
+                                        color: Colors.amberAccent,
+                                        fontWeight: FontWeight.bold)),
                               ],
                             ),
                             const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
+                                Text("मात्रा: ${item.qty} Sh."),
                                 Text("बाय: ${item.buyTime}",
                                     style: const TextStyle(
-                                        fontSize: 11, color: Colors.white54)),
+                                        fontSize: 11, color: Colors.grey)),
                                 Text("सेल: ${item.sellTime}",
                                     style: const TextStyle(
-                                        fontSize: 11, color: Colors.white54)),
+                                        fontSize: 11, color: Colors.grey)),
                               ],
                             ),
                           ],
@@ -1598,7 +1581,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     }
 
     return Card(
-      elevation: 4,
+      elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       margin: const EdgeInsets.symmetric(vertical: 8),
       child: Padding(
@@ -1652,22 +1635,20 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
               children: [
                 Text("₹${s.currentPrice.toStringAsFixed(2)}",
                     style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white)),
+                        fontSize: 20, fontWeight: FontWeight.w900)),
                 Text(
                   "वॉल्यूम: ${s.volumeSurgeX.toStringAsFixed(1)}x Avg",
                   style: TextStyle(
                     fontSize: 12,
                     color: s.volumeSurgeX >= 1.3
                         ? const Color(0xFF00E676)
-                        : Colors.white60,
+                        : Colors.grey,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
-            const Divider(height: 20, color: Colors.white12),
+            const Divider(height: 20),
             Row(
               children: [
                 Expanded(
@@ -1698,15 +1679,11 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                       const SizedBox(height: 4),
                       Text("⚖️ R:R: ${s.riskRewardRatio}",
                           style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold)),
+                              fontSize: 13, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 4),
                       Text("📦 Qty (1%): ${s.suggestedQty} Sh.",
                           style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white70,
-                              fontSize: 13)),
+                              fontWeight: FontWeight.bold, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -1717,7 +1694,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
               "विवरण: ${s.reason}",
               style: const TextStyle(
                   fontSize: 12,
-                  color: Colors.white60,
+                  color: Colors.grey,
                   fontStyle: FontStyle.italic),
             ),
             const SizedBox(height: 14),
