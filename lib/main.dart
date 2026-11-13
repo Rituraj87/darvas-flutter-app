@@ -920,7 +920,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                 isNear52w &&
                 currentPrice > ema50 &&
                 volumeMultiplier >= 1.30 &&
-                !isUpperWickExcessive) {
+                isCleanBody) {
               tempResults.add(DarvasSignal(
                 symbol: symbol,
                 status: "BUY (High Accuracy)",
