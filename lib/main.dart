@@ -13,11 +13,40 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 
 const String darvasTaskKey = "com.darvaspro.backgroundScanTask";
 
-final List<String> advancedWatchlist = [
-  "HAL", "BEL", "TRENT", "DIXON", "ZOMATO", "POLYCAB", "PERSISTENT",
-  "COFORGE", "RELIANCE", "SBIN", "BHARTIARTL", "LT", "BAJFINANCE",
-  "M&M", "SUNPHARMA", "TITAN", "TATAMOTORS", "ADANIENT", "DLF", "SIEMENS",
-  "ABB", "CUMMINSIND", "CHOLAFIN", "MUTHOOTFIN", "SHRIRAMFIN", "VEDL"
+// Nifty 200 प्रमुख NSE स्टॉक्स की सूची (200 Stocks)
+final List<String> defaultNifty200Stocks = [
+  "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "INFY",
+  "LICI", "ITC", "HINDUNILVR", "LT", "BAJFINANCE", "HCLTECH", "MARUTI",
+  "SUNPHARMA", "ADANIENT", "KOTAKBANK", "TITAN", "ONGC", "TATAMOTORS",
+  "NTPC", "AXISBANK", "ADANIPORTS", "ULTRACEMCO", "M&M", "BAJAJFINSV",
+  "ASIANPAINT", "COALINDIA", "POWERGRID", "WIPRO", "HAL", "DLF", "DMART",
+  "SIEMENS", "TRENT", "BEL", "JSWSTEEL", "TATASTEEL", "VBL", "IOC",
+  "IRFC", "ZOMATO", "JIOFIN", "GRASIM", "INDIGO", "TECHM", "HINDALCO",
+  "PFC", "RECLTD", "ADANIPOWER", "ADANIGREEN", "PIDILITIND", "SBILIFE",
+  "HDFCLIFE", "BAJAJ-AUTO", "CIPLA", "DIVISLAB", "DRREDDY", "EICHERMOT",
+  "BPCL", "GAIL", "TATAPOWER", "ABB", "CHOLAFIN", "BANKBARODA", "PNB",
+  "CANBK", "UNIONBANK", "IOB", "IDBI", "HAVELLS", "DABUR", "GODREJCP",
+  "MARICO", "BRITANNIA", "NESTLEIND", "TATACONSUM", "COLPAL", "UNITDSPR",
+  "MCDOWELL-N", "BERGEPAINT", "HEROMOTOCO", "TVSMOTOR", "BHARATFORG",
+  "ASHOKLEY", "MOTHERSON", "BALKRISIND", "MRF", "APOLLOTYRE", "BOSCHLTD",
+  "CUMMINSIND", "BHEL", "CGPOWER", "SUZLON", "NHPC", "SJVN", "TORNTPOWER",
+  "JSWENERGY", "TATACHEM", "SRF", "PIIND", "UPL", "DEEPAKNTR", "NAVINFLUOR",
+  "AARTIIND", "FLUOROCHEM", "ATUL", "COROMANDEL", "CHAMBLFERT", "GNFC",
+  "INDHOTEL", "IRCTC", "CONCOR", "RVNL", "MAZDOCK", "COCHINSHIP", "BDL",
+  "SOLARINDS", "ASTRAL", "POLYCAB", "KEI", "DIXON", "VOLTAS", "BLUESTARCO",
+  "WHIRLPOOL", "CROMPTON", "BATAINDIA", "PAGEIND", "ABFRL", "MANYAVAR",
+  "KALYANKJIL", "TITAGARH", "JINDALSTEL", "SAIL", "NMDC", "VEDL", "HINDZINC",
+  "NATIONALUM", "APLAPOLLO", "RATNAMANI", "PERSISTENT", "COFORGE", "MPHASIS",
+  "LTTS", "LTIM", "KPITTECH", "TATAELXSI", "OFSS", "CYIENT", "ZENSARTECH",
+  "NAUKRI", "POLICYBZR", "PAYTM", "DELHIVERY", "NYKAA", "APOLLOHOSP",
+  "MAXHEALTH", "FORTIS", "SYNGENE", "BIOCON", "LUPIN", "AUROPHARMA",
+  "TORNTPHARM", "ALKEM", "GLENMARK", "IPCALAB", "LAURUSLABS", "GRANULES",
+  "ZYDUSLIFE", "MANKIND", "ABBOTINDIA", "SANOFI", "PFIZER", "GLAXO",
+  "SHRIRAMFIN", "MUTHOOTFIN", "MANAPPURAM", "BAJAJHLDNG", "SBICARD",
+  "ICICIGI", "ICICIPRULI", "NIACL", "GICRE", "HDFCAMC", "NAM-INDIA",
+  "CDSL", "BSE", "MCX", "CAMS", "ANGELONE", "IEX", "FEDERALBNK", "IDFCFIRSTB",
+  "INDUSINDBK", "AUBANK", "BANDHANBNK", "RBLBANK", "KARURVYSYA", "CUB",
+  "OBEROIRLTY", "GODREJPROP", "PRESTIGE", "BRIGADE", "PHOENIXLTD"
 ];
 
 bool checkIsMarketOpenNow() {
@@ -62,14 +91,23 @@ void callbackDispatcher() {
       return Future.value(true);
     }
 
-    for (String symbol in advancedWatchlist) {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String> watchlist =
+        prefs.getStringList('custom_watchlist') ?? defaultNifty200Stocks;
+    final double volMultiplierReq = prefs.getDouble('vol_multiplier') ?? 1.30;
+    final double max52wDist = prefs.getDouble('max_52w_dist') ?? 15.0;
+
+    // बैकग्राउंड में टॉप 40 स्टॉक्स का त्वरित स्कैन
+    final scanSubset = watchlist.take(40).toList();
+
+    for (String symbol in scanSubset) {
       try {
         final url = Uri.parse(
             'https://query1.finance.yahoo.com/v8/finance/chart/$symbol.NS?interval=1d&range=1y');
         final response = await http.get(url, headers: {
           'User-Agent':
               'Mozilla/5.0 (Android; Mobile; rv:109.0) Gecko/109.0 Firefox/119.0'
-        }).timeout(const Duration(seconds: 7));
+        }).timeout(const Duration(seconds: 6));
 
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
@@ -99,7 +137,8 @@ void callbackDispatcher() {
             double currentVol = volumes.last;
 
             double high52w = highs.reduce((a, b) => a > b ? a : b);
-            bool isNear52wHigh = currentPrice >= (high52w * 0.85);
+            double distFrom52w = ((high52w - currentPrice) / high52w) * 100;
+            bool isNear52wHigh = distFrom52w <= max52wDist;
 
             double avgVol20 = volumes
                     .sublist(volumes.length - 21, volumes.length - 1)
@@ -120,18 +159,14 @@ void callbackDispatcher() {
             bool isCleanBody =
                 candleRange > 0 ? (upperWick / candleRange) <= 0.35 : true;
 
-            double riskPerShare = (currentPrice - boxBottom).abs();
-            if (riskPerShare < 1.0) riskPerShare = currentPrice * 0.02;
-            int qty = (1000 / riskPerShare).floor().clamp(1, 10000);
-
             if (currentPrice > boxTop &&
                 isNear52wHigh &&
                 currentPrice > ema50 &&
-                currentVol >= (avgVol20 * 1.30) &&
+                currentVol >= (avgVol20 * volMultiplierReq) &&
                 isCleanBody) {
               await triggerNotification(
                 "🟢 BUY ALERT: $symbol @ ₹${currentPrice.toStringAsFixed(1)}",
-                "डार्वस ब्रेकआउट! Entry: ₹$boxTop | SL: ₹$boxBottom | Qty: $qty",
+                "डार्वस ब्रेकआउट! Entry: ₹$boxTop | SL: ₹$boxBottom",
               );
             } else if (currentPrice < boxBottom) {
               await triggerNotification(
@@ -185,7 +220,6 @@ class DarvasProApp extends StatefulWidget {
 }
 
 class _DarvasProAppState extends State<DarvasProApp> {
-  // थीम मोड: Phone Default, Dark, Light
   ThemeMode _themeMode = ThemeMode.system;
 
   void _toggleTheme() {
@@ -290,7 +324,7 @@ class VirtualPosition {
   final double buyPrice;
   double currentPrice;
   double currentSL;
-  final double targetPrice; // टारगेट पॉइंट
+  final double targetPrice;
   int qty;
   final String buyTime;
 
@@ -333,7 +367,7 @@ class TradeHistoryItem {
   final String symbol;
   final double buyPrice;
   final double sellPrice;
-  final double targetPrice; // हिस्ट्री में टारगेट पॉइंट
+  final double targetPrice;
   final int qty;
   final double pnl;
   final String buyTime;
@@ -393,30 +427,54 @@ class DarvasTerminalScreen extends StatefulWidget {
 
 class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
   int currentTabIndex = 0;
+
+  // यूज़र प्रोफाइल व सेटिंग्स वेरिएबल्स
+  String traderName = "Rituraj Patel";
+  double initialCapital = 100000.0;
   double virtualCash = 100000.0;
+  double riskPercentPerTrade = 1.0; // प्रति ट्रेड रिस्क %
+  double volMultiplierReq = 1.30; // वॉल्यूम सर्ज गुणक
+  double max52wDist = 15.0; // 52W हाई से दूरी %
+  String defaultDematBroker = "Ask Every Time"; // डिफ़ॉल्ट ब्रोकर
+  String lastBackupTimestamp = "अभी तक नहीं";
+
+  List<String> watchlist = List.from(defaultNifty200Stocks);
+
   bool isScanning = false;
+  int scannedCount = 0;
   String marketStatus = "मार्केट जाँचा जा रहा है...";
   List<DarvasSignal> signalList = [];
   List<VirtualPosition> activePositions = [];
   List<TradeHistoryItem> tradeHistory = [];
 
-  // सर्च बार कंट्रोलर
   final TextEditingController searchController = TextEditingController();
   String searchQuery = "";
 
   @override
   void initState() {
     super.initState();
-    loadStoredUserData();
+    loadAllUserData();
     updateMarketStatusMessage();
     runFullDarvasScan();
   }
 
-  // डेटा लोड करना + ऑटो-वॉल्ट रिकवरी
-  Future<void> loadStoredUserData() async {
+  Future<void> loadAllUserData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
+      traderName = prefs.getString('trader_name') ?? "Rituraj Patel";
+      initialCapital = prefs.getDouble('initial_capital') ?? 100000.0;
       virtualCash = prefs.getDouble('virtual_cash') ?? 100000.0;
+      riskPercentPerTrade = prefs.getDouble('risk_percent') ?? 1.0;
+      volMultiplierReq = prefs.getDouble('vol_multiplier') ?? 1.30;
+      max52wDist = prefs.getDouble('max_52w_dist') ?? 15.0;
+      defaultDematBroker = prefs.getString('default_broker') ?? "Ask Every Time";
+      lastBackupTimestamp =
+          prefs.getString('last_backup_time') ?? "ऑटो-सिंक सक्रिय";
+
+      final savedList = prefs.getStringList('custom_watchlist');
+      if (savedList != null && savedList.isNotEmpty) {
+        watchlist = savedList;
+      }
 
       final activeStr = prefs.getString('active_positions');
       if (activeStr != null && activeStr.isNotEmpty) {
@@ -434,23 +492,41 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     });
   }
 
-  // ऑटोमैटिक साइलेंट बैकअप सेविंग
-  Future<void> saveStoredUserDataAndAutoBackup() async {
+  Future<void> saveAllUserDataAndAutoBackup() async {
     final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final formattedTime =
+        "${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}";
+
+    await prefs.setString('trader_name', traderName);
+    await prefs.setDouble('initial_capital', initialCapital);
     await prefs.setDouble('virtual_cash', virtualCash);
+    await prefs.setDouble('risk_percent', riskPercentPerTrade);
+    await prefs.setDouble('vol_multiplier', volMultiplierReq);
+    await prefs.setDouble('max_52w_dist', max52wDist);
+    await prefs.setString('default_broker', defaultDematBroker);
+    await prefs.setStringList('custom_watchlist', watchlist);
+    await prefs.setString('last_backup_time', formattedTime);
+
     await prefs.setString('active_positions',
         json.encode(activePositions.map((e) => e.toMap()).toList()));
     await prefs.setString('trade_history',
         json.encode(tradeHistory.map((e) => e.toMap()).toList()));
 
-    // ऑटोमैटिक वॉल्ट बैकअप
+    // ऑटो वॉल्ट बैकअप
     final autoBackupVault = {
+      'traderName': traderName,
+      'initialCapital': initialCapital,
       'virtualCash': virtualCash,
       'activePositions': activePositions.map((e) => e.toMap()).toList(),
       'tradeHistory': tradeHistory.map((e) => e.toMap()).toList(),
-      'lastBackupTime': DateTime.now().toIso8601String(),
+      'lastBackupTime': formattedTime,
     };
     await prefs.setString('auto_backup_vault', json.encode(autoBackupVault));
+
+    setState(() {
+      lastBackupTimestamp = formattedTime;
+    });
   }
 
   void updateMarketStatusMessage() {
@@ -491,8 +567,39 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     }
   }
 
+  void launchDirectBroker(String symbol, String broker) {
+    Clipboard.setData(ClipboardData(text: symbol));
+    if (broker == "Dhan") {
+      launchUrl(Uri.parse("https://tv.dhan.co/?symbol=$symbol"),
+              mode: LaunchMode.externalApplication)
+          .catchError((_) => launchUrl(Uri.parse("dhan://trade/$symbol")));
+    } else if (broker == "Angel One") {
+      launchUrl(Uri.parse("angelone://spark/search?query=$symbol"),
+              mode: LaunchMode.externalApplication)
+          .catchError(
+              (_) => launchUrl(Uri.parse("https://trade.angelone.in/")));
+    } else if (broker == "Paytm Money") {
+      launchUrl(Uri.parse("paytmmoney://stocks/detail?symbol=$symbol"),
+              mode: LaunchMode.externalApplication)
+          .catchError(
+              (_) => launchUrl(Uri.parse("https://www.paytmmoney.com/stocks")));
+    }
+  }
+
   void handleDematAction(String symbol) {
     Clipboard.setData(ClipboardData(text: symbol));
+
+    if (defaultDematBroker != "Ask Every Time") {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              "🚀 '$symbol' कॉपीड! डिफ़ॉल्ट ब्रोकर ($defaultDematBroker) खुल रहा है..."),
+          backgroundColor: const Color(0xFF00E676),
+        ),
+      );
+      launchDirectBroker(symbol, defaultDematBroker);
+      return;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -563,11 +670,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                       ),
                       onPressed: () {
                         Navigator.pop(ctx);
-                        launchUrl(
-                                Uri.parse("https://tv.dhan.co/?symbol=$symbol"),
-                                mode: LaunchMode.externalApplication)
-                            .catchError((_) => launchUrl(
-                                Uri.parse("dhan://trade/$symbol")));
+                        launchDirectBroker(symbol, "Dhan");
                       },
                       child: const Text("Dhan",
                           style: TextStyle(
@@ -587,12 +690,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                       ),
                       onPressed: () {
                         Navigator.pop(ctx);
-                        launchUrl(
-                                Uri.parse(
-                                    "angelone://spark/search?query=$symbol"),
-                                mode: LaunchMode.externalApplication)
-                            .catchError((_) => launchUrl(
-                                Uri.parse("https://trade.angelone.in/")));
+                        launchDirectBroker(symbol, "Angel One");
                       },
                       child: const Text("Angel One",
                           style: TextStyle(
@@ -612,12 +710,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                       ),
                       onPressed: () {
                         Navigator.pop(ctx);
-                        launchUrl(
-                                Uri.parse(
-                                    "paytmmoney://stocks/detail?symbol=$symbol"),
-                                mode: LaunchMode.externalApplication)
-                            .catchError((_) => launchUrl(Uri.parse(
-                                "https://www.paytmmoney.com/stocks")));
+                        launchDirectBroker(symbol, "Paytm Money");
                       },
                       child: const Text("Paytm Money",
                           style: TextStyle(
@@ -756,12 +849,12 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                           ));
                         });
 
-                        await saveStoredUserDataAndAutoBackup();
+                        await saveAllUserDataAndAutoBackup();
                         Navigator.pop(ctx);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                                "✅ ${s.symbol} ($orderQty शेयर्स) ऑटो-बैकअप में सुरक्षित जुड़ गया!"),
+                                "✅ ${s.symbol} ($orderQty शेयर्स) पोर्टफोलियो में सुरक्षित जुड़ गया!"),
                             backgroundColor: const Color(0xFF00E676),
                           ),
                         );
@@ -805,7 +898,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
       );
     });
 
-    await saveStoredUserDataAndAutoBackup();
+    await saveAllUserDataAndAutoBackup();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -823,197 +916,237 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     setState(() {
       tradeHistory.removeWhere((item) => item.id == id);
     });
-    await saveStoredUserDataAndAutoBackup();
+    await saveAllUserDataAndAutoBackup();
   }
 
-  Future<void> runFullDarvasScan() async {
-    if (isScanning) return;
-    setState(() => isScanning = true);
+  // एकल स्टॉक डेटा फेच हेल्पर (बैच प्रोसेसिंग के लिए)
+  Future<DarvasSignal?> fetchSingleStockSignal(String symbol) async {
+    try {
+      final url = Uri.parse(
+          'https://query1.finance.yahoo.com/v8/finance/chart/$symbol.NS?interval=1d&range=1y');
+      final response = await http.get(url, headers: {
+        'User-Agent':
+            'Mozilla/5.0 (Android; Mobile; rv:109.0) Gecko/109.0 Firefox/119.0'
+      }).timeout(const Duration(seconds: 7));
 
-    List<DarvasSignal> tempResults = [];
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final quote = data['chart']['result'][0]['indicators']['quote'][0];
 
-    for (String symbol in advancedWatchlist) {
-      try {
-        final url = Uri.parse(
-            'https://query1.finance.yahoo.com/v8/finance/chart/$symbol.NS?interval=1d&range=1y');
-        final response = await http.get(url, headers: {
-          'User-Agent':
-              'Mozilla/5.0 (Android; Mobile; rv:109.0) Gecko/109.0 Firefox/119.0'
-        }).timeout(const Duration(seconds: 8));
+        List<double> closes = [];
+        List<double> highs = [];
+        List<double> lows = [];
+        List<double> volumes = [];
 
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          final quote = data['chart']['result'][0]['indicators']['quote'][0];
-
-          List<double> closes = [];
-          List<double> highs = [];
-          List<double> lows = [];
-          List<double> volumes = [];
-
-          for (int i = 0; i < quote['close'].length; i++) {
-            if (quote['close'][i] != null &&
-                quote['high'][i] != null &&
-                quote['low'][i] != null &&
-                quote['volume'][i] != null) {
-              closes.add(quote['close'][i].toDouble());
-              highs.add(quote['high'][i].toDouble());
-              lows.add(quote['low'][i].toDouble());
-              volumes.add(quote['volume'][i].toDouble());
-            }
-          }
-
-          if (closes.length >= 60) {
-            double currentPrice = closes.last;
-            double currentHigh = highs.last;
-            double currentLow = lows.last;
-            double currentVol = volumes.last;
-
-            double high52w = highs.reduce((a, b) => a > b ? a : b);
-            double distFrom52w = ((high52w - currentPrice) / high52w) * 100;
-            bool isNear52w = distFrom52w <= 15.0;
-
-            double avgVol20 = volumes
-                    .sublist(volumes.length - 21, volumes.length - 1)
-                    .reduce((a, b) => a + b) /
-                20;
-            double volumeMultiplier = currentVol / avgVol20;
-
-            double ema50 =
-                closes.sublist(closes.length - 35).reduce((a, b) => a + b) / 35;
-
-            double boxTop = highs
-                .sublist(highs.length - 20, highs.length - 2)
-                .reduce((a, b) => a > b ? a : b);
-            double boxBottom = lows
-                .sublist(lows.length - 20, lows.length - 2)
-                .reduce((a, b) => a < b ? a : b);
-            double boxHeight = boxTop - boxBottom;
-
-            double candleRange = currentHigh - currentLow;
-            double upperWick = currentHigh - currentPrice;
-            bool isCleanBody =
-                candleRange > 0 ? (upperWick / candleRange) <= 0.35 : true;
-
-            double riskPerShare = (currentPrice - boxBottom).abs();
-            if (riskPerShare < 1.0) riskPerShare = currentPrice * 0.02;
-            int qty = (1000 / riskPerShare).floor().clamp(1, 10000);
-
-            double target1 = boxTop + (boxHeight * 2);
-            double addLevel = boxTop + boxHeight;
-            double nextTarget = addLevel + (boxHeight * 2);
-
-            double rewardDistance = target1 - currentPrice;
-            double riskRatio =
-                rewardDistance / (riskPerShare > 0 ? riskPerShare : 1);
-            String rrText = "1:${riskRatio.toStringAsFixed(1)}";
-
-            for (var pos in activePositions) {
-              if (pos.symbol == symbol) {
-                pos.currentPrice = currentPrice;
-                if (currentPrice > addLevel && pos.currentSL < boxTop) {
-                  pos.currentSL = boxTop;
-                }
-              }
-            }
-
-            if (currentPrice > boxTop &&
-                isNear52w &&
-                currentPrice > ema50 &&
-                volumeMultiplier >= 1.30 &&
-                isCleanBody) {
-              tempResults.add(DarvasSignal(
-                symbol: symbol,
-                status: "BUY (High Accuracy)",
-                currentPrice: currentPrice,
-                entryPrice: boxTop,
-                stopLoss: boxBottom,
-                target1: target1,
-                addLevel: addLevel,
-                nextTarget: nextTarget,
-                suggestedQty: qty,
-                reason: "52W हाई के पास क्लीन ब्रेकआउट + 1.3x वॉल्यूम पुष्टि!",
-                near52wPercent: distFrom52w,
-                volumeSurgeX: volumeMultiplier,
-                riskRewardRatio: rrText,
-              ));
-            } else if (currentPrice >= (boxTop * 0.985) &&
-                currentPrice <= boxTop &&
-                isNear52w) {
-              tempResults.add(DarvasSignal(
-                symbol: symbol,
-                status: "RADAR (Pre-Breakout)",
-                currentPrice: currentPrice,
-                entryPrice: boxTop,
-                stopLoss: boxBottom,
-                target1: target1,
-                addLevel: addLevel,
-                nextTarget: nextTarget,
-                suggestedQty: qty,
-                reason: "ब्रेकआउट की कगार पर! बॉक्स टॉप के 1.5% भीतर।",
-                near52wPercent: distFrom52w,
-                volumeSurgeX: volumeMultiplier,
-                riskRewardRatio: rrText,
-              ));
-            } else if (currentPrice > addLevel) {
-              tempResults.add(DarvasSignal(
-                symbol: symbol,
-                status: "ADD (Pyramid)",
-                currentPrice: currentPrice,
-                entryPrice: addLevel,
-                stopLoss: boxTop,
-                target1: nextTarget,
-                addLevel: addLevel + boxHeight,
-                nextTarget: nextTarget + boxHeight,
-                suggestedQty: (qty * 0.5).floor().clamp(1, 9999),
-                reason: "नया बॉक्स ब्रेकआउट! पोजीशन में और शेयर जोड़ें।",
-                near52wPercent: distFrom52w,
-                volumeSurgeX: volumeMultiplier,
-                riskRewardRatio: rrText,
-              ));
-            } else if (currentPrice < boxBottom) {
-              tempResults.add(DarvasSignal(
-                symbol: symbol,
-                status: "EXIT",
-                currentPrice: currentPrice,
-                entryPrice: boxTop,
-                stopLoss: boxBottom,
-                target1: target1,
-                addLevel: addLevel,
-                nextTarget: nextTarget,
-                suggestedQty: 0,
-                reason: "बॉक्स बॉटम टूटा! एग्जिट करें।",
-                near52wPercent: distFrom52w,
-                volumeSurgeX: volumeMultiplier,
-                riskRewardRatio: "N/A",
-              ));
-            } else {
-              tempResults.add(DarvasSignal(
-                symbol: symbol,
-                status: "HOLD",
-                currentPrice: currentPrice,
-                entryPrice: boxTop,
-                stopLoss: boxBottom,
-                target1: target1,
-                addLevel: addLevel,
-                nextTarget: nextTarget,
-                suggestedQty: qty,
-                reason: "डार्वस कंसॉलिडेशन बॉक्स के अंदर चल रहा है।",
-                near52wPercent: distFrom52w,
-                volumeSurgeX: volumeMultiplier,
-                riskRewardRatio: rrText,
-              ));
-            }
+        for (int i = 0; i < quote['close'].length; i++) {
+          if (quote['close'][i] != null &&
+              quote['high'][i] != null &&
+              quote['low'][i] != null &&
+              quote['volume'][i] != null) {
+            closes.add(quote['close'][i].toDouble());
+            highs.add(quote['high'][i].toDouble());
+            lows.add(quote['low'][i].toDouble());
+            volumes.add(quote['volume'][i].toDouble());
           }
         }
-      } catch (_) {}
+
+        if (closes.length >= 60) {
+          double currentPrice = closes.last;
+          double currentHigh = highs.last;
+          double currentLow = lows.last;
+          double currentVol = volumes.last;
+
+          double high52w = highs.reduce((a, b) => a > b ? a : b);
+          double distFrom52w = ((high52w - currentPrice) / high52w) * 100;
+          bool isNear52w = distFrom52w <= max52wDist;
+
+          double avgVol20 = volumes
+                  .sublist(volumes.length - 21, volumes.length - 1)
+                  .reduce((a, b) => a + b) /
+              20;
+          double volumeMultiplier = currentVol / avgVol20;
+
+          double ema50 =
+              closes.sublist(closes.length - 35).reduce((a, b) => a + b) / 35;
+
+          double boxTop = highs
+              .sublist(highs.length - 20, highs.length - 2)
+              .reduce((a, b) => a > b ? a : b);
+          double boxBottom = lows
+              .sublist(lows.length - 20, lows.length - 2)
+              .reduce((a, b) => a < b ? a : b);
+          double boxHeight = boxTop - boxBottom;
+
+          double candleRange = currentHigh - currentLow;
+          double upperWick = currentHigh - currentPrice;
+          bool isCleanBody =
+              candleRange > 0 ? (upperWick / candleRange) <= 0.35 : true;
+
+          // कस्टम रिस्क % के अनुसार क्वांटिटी गणना
+          double riskAmount = initialCapital * (riskPercentPerTrade / 100);
+          double riskPerShare = (currentPrice - boxBottom).abs();
+          if (riskPerShare < 1.0) riskPerShare = currentPrice * 0.02;
+          int qty = (riskAmount / riskPerShare).floor().clamp(1, 100000);
+
+          double target1 = boxTop + (boxHeight * 2);
+          double addLevel = boxTop + boxHeight;
+          double nextTarget = addLevel + (boxHeight * 2);
+
+          double rewardDistance = target1 - currentPrice;
+          double riskRatio =
+              rewardDistance / (riskPerShare > 0 ? riskPerShare : 1);
+          String rrText = "1:${riskRatio.toStringAsFixed(1)}";
+
+          for (var pos in activePositions) {
+            if (pos.symbol == symbol) {
+              pos.currentPrice = currentPrice;
+              if (currentPrice > addLevel && pos.currentSL < boxTop) {
+                pos.currentSL = boxTop;
+              }
+            }
+          }
+
+          if (currentPrice > boxTop &&
+              isNear52w &&
+              currentPrice > ema50 &&
+              volumeMultiplier >= volMultiplierReq &&
+              isCleanBody) {
+            return DarvasSignal(
+              symbol: symbol,
+              status: "BUY (High Accuracy)",
+              currentPrice: currentPrice,
+              entryPrice: boxTop,
+              stopLoss: boxBottom,
+              target1: target1,
+              addLevel: addLevel,
+              nextTarget: nextTarget,
+              suggestedQty: qty,
+              reason: "52W हाई के पास क्लीन ब्रेकआउट + वॉल्यूम पुष्टि!",
+              near52wPercent: distFrom52w,
+              volumeSurgeX: volumeMultiplier,
+              riskRewardRatio: rrText,
+            );
+          } else if (currentPrice >= (boxTop * 0.985) &&
+              currentPrice <= boxTop &&
+              isNear52w) {
+            return DarvasSignal(
+              symbol: symbol,
+              status: "RADAR (Pre-Breakout)",
+              currentPrice: currentPrice,
+              entryPrice: boxTop,
+              stopLoss: boxBottom,
+              target1: target1,
+              addLevel: addLevel,
+              nextTarget: nextTarget,
+              suggestedQty: qty,
+              reason: "ब्रेकआउट की कगार पर! बॉक्स टॉप के 1.5% भीतर।",
+              near52wPercent: distFrom52w,
+              volumeSurgeX: volumeMultiplier,
+              riskRewardRatio: rrText,
+            );
+          } else if (currentPrice > addLevel) {
+            return DarvasSignal(
+              symbol: symbol,
+              status: "ADD (Pyramid)",
+              currentPrice: currentPrice,
+              entryPrice: addLevel,
+              stopLoss: boxTop,
+              target1: nextTarget,
+              addLevel: addLevel + boxHeight,
+              nextTarget: nextTarget + boxHeight,
+              suggestedQty: (qty * 0.5).floor().clamp(1, 50000),
+              reason: "नया बॉक्स ब्रेकआउट! पोजीशन में और शेयर जोड़ें।",
+              near52wPercent: distFrom52w,
+              volumeSurgeX: volumeMultiplier,
+              riskRewardRatio: rrText,
+            );
+          } else if (currentPrice < boxBottom) {
+            return DarvasSignal(
+              symbol: symbol,
+              status: "EXIT",
+              currentPrice: currentPrice,
+              entryPrice: boxTop,
+              stopLoss: boxBottom,
+              target1: target1,
+              addLevel: addLevel,
+              nextTarget: nextTarget,
+              suggestedQty: 0,
+              reason: "बॉक्स बॉटम टूटा! एग्जिट करें।",
+              near52wPercent: distFrom52w,
+              volumeSurgeX: volumeMultiplier,
+              riskRewardRatio: "N/A",
+            );
+          } else {
+            return DarvasSignal(
+              symbol: symbol,
+              status: "HOLD",
+              currentPrice: currentPrice,
+              entryPrice: boxTop,
+              stopLoss: boxBottom,
+              target1: target1,
+              addLevel: addLevel,
+              nextTarget: nextTarget,
+              suggestedQty: qty,
+              reason: "डार्वस कंसॉलिडेशन बॉक्स के अंदर चल रहा है।",
+              near52wPercent: distFrom52w,
+              volumeSurgeX: volumeMultiplier,
+              riskRewardRatio: rrText,
+            );
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // Nifty 200 त्वरित बैच स्कैनिंग (15 स्टॉक्स प्रति बैच)
+  Future<void> runFullDarvasScan() async {
+    if (isScanning) return;
+    setState(() {
+      isScanning = true;
+      scannedCount = 0;
+    });
+
+    List<DarvasSignal> tempResults = [];
+    const int batchSize = 15;
+
+    for (int i = 0; i < watchlist.length; i += batchSize) {
+      final batch = watchlist.skip(i).take(batchSize).toList();
+      final batchFutures = batch.map((sym) => fetchSingleStockSignal(sym));
+      final results = await Future.wait(batchFutures);
+
+      for (var item in results) {
+        if (item != null) {
+          tempResults.add(item);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          scannedCount = (i + batch.length).clamp(0, watchlist.length);
+          // BUY और RADAR सिग्नल्स को सबसे ऊपर दिखाना
+          tempResults.sort((a, b) {
+            int priority(String st) {
+              if (st.contains("BUY")) return 1;
+              if (st.contains("RADAR")) return 2;
+              if (st.contains("ADD")) return 3;
+              if (st == "EXIT") return 4;
+              return 5;
+            }
+            return priority(a.status).compareTo(priority(b.status));
+          });
+          signalList = List.from(tempResults);
+        });
+      }
     }
 
-    await saveStoredUserDataAndAutoBackup();
+    await saveAllUserDataAndAutoBackup();
 
-    setState(() {
-      signalList = tempResults;
-      isScanning = false;
-    });
+    if (mounted) {
+      setState(() {
+        isScanning = false;
+      });
+    }
   }
 
   @override
@@ -1033,11 +1166,11 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           children: [
             Icon(Icons.candlestick_chart, color: Color(0xFF00E676)),
             SizedBox(width: 8),
-            Text('DARVAS PRO',
+            Text('DARVAS PRO 200',
                 style: TextStyle(
                     fontWeight: FontWeight.w900,
-                    letterSpacing: 1.1,
-                    fontSize: 18)),
+                    letterSpacing: 1.0,
+                    fontSize: 17)),
           ],
         ),
         actions: [
@@ -1052,8 +1185,8 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                 color: Color(0xFF00E676)),
             onPressed: () {
               triggerNotification(
-                "🔔 Darvas Terminal Active",
-                "बैकग्राउंड ऑटो-बैकअप और अलर्ट सिस्टम लाइव हैं!",
+                "🔔 Darvas Pro 200 Active",
+                "निफ्टी 200 स्कैनर और ऑटो-बैकअप सिस्टम सक्रिय हैं!",
               );
             },
           ),
@@ -1065,6 +1198,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           buildScannerTab(),
           buildPortfolioTab(),
           buildJournalTab(),
+          buildProfileAndSettingsTab(),
         ],
       ),
       bottomNavigationBar: Container(
@@ -1072,14 +1206,15 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           border: Border(top: BorderSide(color: Colors.white12, width: 0.5)),
         ),
         child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
           currentIndex: currentTabIndex,
-          selectedFontSize: 12,
-          unselectedFontSize: 12,
+          selectedFontSize: 11,
+          unselectedFontSize: 11,
           onTap: (index) => setState(() => currentTabIndex = index),
           items: [
             const BottomNavigationBarItem(
               icon: Icon(Icons.radar),
-              label: "स्कैनर",
+              label: "स्कैनर (200)",
             ),
             BottomNavigationBarItem(
               icon: Stack(
@@ -1100,7 +1235,11 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
             ),
             const BottomNavigationBarItem(
               icon: Icon(Icons.history_edu),
-              label: "जर्नल व हिस्ट्री",
+              label: "जर्नल",
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.person_pin),
+              label: "प्रोफ़ाइल / सेटिंग",
             ),
           ],
         ),
@@ -1111,14 +1250,17 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
               backgroundColor: const Color(0xFF00E676),
               foregroundColor: Colors.black,
               icon: const Icon(Icons.bolt),
-              label: Text(isScanning ? "स्कैनिंग..." : "लाइव स्कैन",
+              label: Text(
+                  isScanning
+                      ? "स्कैन: $scannedCount/${watchlist.length}"
+                      : "Nifty 200 स्कैन",
                   style: const TextStyle(fontWeight: FontWeight.bold)),
             )
           : null,
     );
   }
 
-  // 1. लाइव स्कैनर टैब (सर्च बार के साथ)
+  // 1. लाइव स्कैनर टैब
   Widget buildScannerTab() {
     final filteredSignals = signalList.where((s) {
       return s.symbol.toLowerCase().contains(searchQuery.toLowerCase());
@@ -1126,13 +1268,13 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
 
     return Column(
       children: [
-        // सर्च बार
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
           child: TextField(
             controller: searchController,
             decoration: InputDecoration(
-              hintText: "किसी भी शेयर का नाम सर्च करें (उदा. HAL, TRENT)...",
+              hintText:
+                  "Nifty 200 में शेयर सर्च करें (उदा. HAL, TRENT, TATASTEEL)...",
               prefixIcon: const Icon(Icons.search, color: Color(0xFF00E676)),
               suffixIcon: searchQuery.isNotEmpty
                   ? IconButton(
@@ -1156,7 +1298,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           ),
         ),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1174,14 +1316,17 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           ),
         ),
         if (isScanning)
-          const LinearProgressIndicator(color: Color(0xFF00E676)),
+          LinearProgressIndicator(
+            value: watchlist.isNotEmpty ? scannedCount / watchlist.length : 0,
+            color: const Color(0xFF00E676),
+          ),
         Expanded(
           child: signalList.isEmpty && !isScanning
               ? Center(
                   child: ElevatedButton.icon(
                     onPressed: runFullDarvasScan,
                     icon: const Icon(Icons.refresh, color: Colors.black),
-                    label: const Text("स्कैन शुरू करें",
+                    label: const Text("Nifty 200 स्कैन शुरू करें",
                         style: TextStyle(
                             color: Colors.black, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
@@ -1436,7 +1581,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     );
   }
 
-  // 3. ट्रेड जर्नल व हिस्ट्री टैब (टारगेट पॉइंट व ऑटो बैकअप के साथ)
+  // 3. ट्रेड जर्नल व हिस्ट्री टैब
   Widget buildJournalTab() {
     return Column(
       children: [
@@ -1565,6 +1710,365 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     );
   }
 
+  // 4. प्रोफ़ाइल और सेटिंग्स टैब (Profile, Performance & Strategy Settings)
+  Widget buildProfileAndSettingsTab() {
+    int totalClosed = tradeHistory.length;
+    int winningTrades = tradeHistory.where((t) => t.pnl > 0).length;
+    double winRate =
+        totalClosed > 0 ? (winningTrades / totalClosed) * 100 : 0.0;
+    double bestTrade = totalClosed > 0
+        ? tradeHistory.map((t) => t.pnl).reduce((a, b) => a > b ? a : b)
+        : 0.0;
+    double netRealizedPnL = totalClosed > 0
+        ? tradeHistory.map((t) => t.pnl).reduce((a, b) => a + b)
+        : 0.0;
+
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      children: [
+        // 1. ट्रेडर प्रोफ़ाइल कार्ड
+        Card(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor:
+                          const Color(0xFF00E676).withOpacity(0.2),
+                      child: const Icon(Icons.person,
+                          size: 32, color: Color(0xFF00E676)),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(traderName,
+                              style: const TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
+                          const Text("Momentum & Darvas Swing Trader",
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.grey)),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Color(0xFF00B0FF)),
+                      onPressed: () {
+                        final nameCtrl =
+                            TextEditingController(text: traderName);
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text("प्रोफ़ाइल नाम बदलें"),
+                            content: TextField(
+                              controller: nameCtrl,
+                              decoration: const InputDecoration(
+                                  labelText: "आपका नाम"),
+                            ),
+                            actions: [
+                              TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text("रद्द")),
+                              ElevatedButton(
+                                onPressed: () async {
+                                  if (nameCtrl.text.trim().isNotEmpty) {
+                                    setState(() =>
+                                        traderName = nameCtrl.text.trim());
+                                    await saveAllUserDataAndAutoBackup();
+                                  }
+                                  Navigator.pop(ctx);
+                                },
+                                child: const Text("सेव"),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    )
+                  ],
+                ),
+                const Divider(height: 24),
+                // विन-रेट और एक्यूरेसी मीटर
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    Column(
+                      children: [
+                        Text("${winRate.toStringAsFixed(1)}%",
+                            style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF00E676))),
+                        const Text("विन-रेट (Win Rate)",
+                            style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      ],
+                    ),
+                    Column(
+                      children: [
+                        Text(
+                            "${netRealizedPnL >= 0 ? '+' : ''}₹${netRealizedPnL.toStringAsFixed(0)}",
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: netRealizedPnL >= 0
+                                    ? const Color(0xFF00E676)
+                                    : Colors.redAccent)),
+                        const Text("कुल रियलाइज्ड P&L",
+                            style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      ],
+                    ),
+                    Column(
+                      children: [
+                        Text("+₹${bestTrade.toStringAsFixed(0)}",
+                            style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.amberAccent)),
+                        const Text("सर्वश्रेष्ठ ट्रेड",
+                            style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      ],
+                    ),
+                  ],
+                )
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // 2. ट्रेडिंग व अल्गोरिदम सेटिंग्स
+        Card(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("⚙️ ट्रेडिंग व रिस्क सेटिंग्स",
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 14),
+
+                // प्रति ट्रेड रिस्क स्लाइडर
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("प्रति ट्रेड रिस्क (Risk %):"),
+                    Text("${riskPercentPerTrade.toStringAsFixed(1)}%",
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF00E676))),
+                  ],
+                ),
+                Slider(
+                  value: riskPercentPerTrade,
+                  min: 0.5,
+                  max: 3.0,
+                  divisions: 5,
+                  activeColor: const Color(0xFF00E676),
+                  onChanged: (val) async {
+                    setState(() => riskPercentPerTrade = val);
+                    await saveAllUserDataAndAutoBackup();
+                  },
+                ),
+
+                // वॉल्यूम सर्ज गुणक स्लाइडर
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("न्यूनतम वॉल्यूम सर्ज:"),
+                    Text("${volMultiplierReq.toStringAsFixed(1)}x Avg",
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF00B0FF))),
+                  ],
+                ),
+                Slider(
+                  value: volMultiplierReq,
+                  min: 1.1,
+                  max: 2.5,
+                  divisions: 14,
+                  activeColor: const Color(0xFF00B0FF),
+                  onChanged: (val) async {
+                    setState(() => volMultiplierReq = val);
+                    await saveAllUserDataAndAutoBackup();
+                  },
+                ),
+
+                // 52-वीक हाई रेंज स्लाइडर
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("52-वीक हाई से अधिकतम दूरी:"),
+                    Text("${max52wDist.toStringAsFixed(0)}%",
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amberAccent)),
+                  ],
+                ),
+                Slider(
+                  value: max52wDist,
+                  min: 5.0,
+                  max: 25.0,
+                  divisions: 4,
+                  activeColor: Colors.amberAccent,
+                  onChanged: (val) async {
+                    setState(() => max52wDist = val);
+                    await saveAllUserDataAndAutoBackup();
+                  },
+                ),
+                const Divider(height: 20),
+
+                // डिफ़ॉल्ट डीमैट ब्रोकर चयन
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("डिफ़ॉल्ट डीमैट खाता:"),
+                    DropdownButton<String>(
+                      value: defaultDematBroker,
+                      underline: const SizedBox(),
+                      items: ["Ask Every Time", "Dhan", "Angel One", "Paytm Money"]
+                          .map((b) => DropdownMenuItem(
+                              value: b,
+                              child: Text(b,
+                                  style: const TextStyle(fontSize: 13))))
+                          .toList(),
+                      onChanged: (val) async {
+                        if (val != null) {
+                          setState(() => defaultDematBroker = val);
+                          await saveAllUserDataAndAutoBackup();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // 3. वॉचलिस्ट व कैपिटल कंट्रोल
+        Card(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("📊 वॉचलिस्ट व पूंजी प्रबंधन (${watchlist.length} शेयर्स)",
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.add_circle_outline, size: 18),
+                        label: const Text("नया शेयर जोड़ें"),
+                        onPressed: () {
+                          final symCtrl = TextEditingController();
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text("वॉचलिस्ट में NSE शेयर जोड़ें"),
+                              content: TextField(
+                                controller: symCtrl,
+                                textCapitalization:
+                                    TextCapitalization.characters,
+                                decoration: const InputDecoration(
+                                    hintText: "उदा. SUZLON, TATAMOTORS"),
+                              ),
+                              actions: [
+                                TextButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    child: const Text("रद्द")),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    final sym =
+                                        symCtrl.text.trim().toUpperCase();
+                                    if (sym.isNotEmpty &&
+                                        !watchlist.contains(sym)) {
+                                      setState(() => watchlist.insert(0, sym));
+                                      await saveAllUserDataAndAutoBackup();
+                                      Navigator.pop(ctx);
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(SnackBar(
+                                              content: Text(
+                                                  "✅ $sym वॉचलिस्ट में जुड़ गया!")));
+                                    }
+                                  },
+                                  child: const Text("जोड़ें"),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.account_balance, size: 18),
+                        label: const Text("पूंजी रीसेट करें"),
+                        onPressed: () {
+                          final capCtrl = TextEditingController(
+                              text: initialCapital.toStringAsFixed(0));
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text("वर्चुअल पूंजी सेट करें"),
+                              content: TextField(
+                                controller: capCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                    labelText: "नई कुल पूंजी (₹)"),
+                              ),
+                              actions: [
+                                TextButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    child: const Text("रद्द")),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    final newCap =
+                                        double.tryParse(capCtrl.text) ??
+                                            100000.0;
+                                    setState(() {
+                                      initialCapital = newCap;
+                                      virtualCash = newCap;
+                                    });
+                                    await saveAllUserDataAndAutoBackup();
+                                    Navigator.pop(ctx);
+                                  },
+                                  child: const Text("अपडेट करें"),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text("🛡️ आखिरी ऑटो-बैकअप: $lastBackupTimestamp",
+                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   // मॉडर्न स्टॉक कार्ड
   Widget buildInteractiveStockCard(DarvasSignal s) {
     Color badgeColor;
@@ -1640,7 +2144,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                   "वॉल्यूम: ${s.volumeSurgeX.toStringAsFixed(1)}x Avg",
                   style: TextStyle(
                     fontSize: 12,
-                    color: s.volumeSurgeX >= 1.3
+                    color: s.volumeSurgeX >= volMultiplierReq
                         ? const Color(0xFF00E676)
                         : Colors.grey,
                     fontWeight: FontWeight.bold,
@@ -1681,7 +2185,8 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                           style: const TextStyle(
                               fontSize: 13, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 4),
-                      Text("📦 Qty (1%): ${s.suggestedQty} Sh.",
+                      Text(
+                          "📦 Qty (${riskPercentPerTrade.toStringAsFixed(1)}%): ${s.suggestedQty} Sh.",
                           style: const TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 13)),
                     ],
