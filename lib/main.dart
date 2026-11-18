@@ -13,8 +13,12 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 
 const String darvasTaskKey = "com.darvaspro.backgroundScanTask";
 
-// Nifty 200 प्रमुख NSE स्टॉक्स की सूची (200 Stocks)
-final List<String> defaultNifty200Stocks = [
+// GitHub रिपॉजिटरी से Nifty 500 JSON ऑटो-सिंक URL
+const String defaultGithubWatchlistUrl =
+    "https://raw.githubusercontent.com/Rituraj87/darvas-flutter-app/main/nifty500.json";
+
+// Nifty 500 प्रमुख NSE स्टॉक्स की संपूर्ण सूची (500 Stocks)
+final List<String> defaultNifty500Stocks = [
   "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "INFY",
   "LICI", "ITC", "HINDUNILVR", "LT", "BAJFINANCE", "HCLTECH", "MARUTI",
   "SUNPHARMA", "ADANIENT", "KOTAKBANK", "TITAN", "ONGC", "TATAMOTORS",
@@ -46,7 +50,55 @@ final List<String> defaultNifty200Stocks = [
   "ICICIGI", "ICICIPRULI", "NIACL", "GICRE", "HDFCAMC", "NAM-INDIA",
   "CDSL", "BSE", "MCX", "CAMS", "ANGELONE", "IEX", "FEDERALBNK", "IDFCFIRSTB",
   "INDUSINDBK", "AUBANK", "BANDHANBNK", "RBLBANK", "KARURVYSYA", "CUB",
-  "OBEROIRLTY", "GODREJPROP", "PRESTIGE", "BRIGADE", "PHOENIXLTD"
+  "OBEROIRLTY", "GODREJPROP", "PRESTIGE", "BRIGADE", "PHOENIXLTD", "LODHA",
+  "SOBHA", "SUNTECK", "MAHLIFE", "NBCC", "HUDCO", "IRB", "KNRCON",
+  "PNCINFRA", "GRINFRA", "NCC", "JKCEMENT", "DALBHARAT", "ACC", "AMBUJACEM",
+  "RAMCOCEM", "SHREECEM", "INDIACEM", "NUVOCO", "STARCEMENT", "BIRLACORPN",
+  "JKLAKSHMI", "HEIDELBERG", "CENTURYTEX", "TRIDENT", "WELSPUNLIV", "KPRMILL",
+  "VARDHMAN", "ARVIND", "RAYMOND", "GOCOLORS", "METROBRAND", "RELAXO",
+  "CAMPUS", "VIPIND", "SAFARI", "TTKPRESTIG", "VGUARD", "SYMPHONY",
+  "AMBER", "KAYNES", "SYRMA", "DATAPATTNS", "PARAS", "MTARTECH",
+  "ASTRAMICRO", "ZENTEC", "IDEAFORGE", "TEJASNET", "HFCL", "STLTECH",
+  "RAILTEL", "RITES", "IRCON", "ENGINERSIN", "BEML", "GRSE", "MIDHANI",
+  "ELECON", "TRITURBINE", "THERMAX", "ISGEC", "PRAJIND", "KEC", "KALPATPOWR",
+  "APARINDS", "FINCABLES", "TIMKEN", "SCHAEFFLER", "SKFINDIA", "GRINDWELL",
+  "CARBORUNIV", "ESCORTS", "SONACOMS", "ENDURANCE", "UNO-MINDA", "EXIDEIND",
+  "AMARAJABAT", "CEATLTD", "JKTYRE", "CRAFTSMAN", "SANSERA", "SUPRAJIT",
+  "GABRIEL", "MINDACORP", "VARROC", "CIEINDIA", "MAHINDCIE", "JBMA",
+  "OLECTRA", "TIINDIA", "TUBEINVEST", "CHOLAHLDNG", "SUNDARMFIN", "M&MFIN",
+  "L&TFH", "POONAWALLA", "IIFL", "JMFINANCIL", "MOTILALOFS", "NUVAMA",
+  "360ONE", "ANANDRATHI", "UTIAMC", "ABSLAMC", "CANFINHOME", "LICHSGFIN",
+  "AAVAS", "HOMEFIRST", "APTUS", "PNBHOUSING", "REPCOHOME", "HUDCO",
+  "CREDITACC", "SPANDANA", "FUSION", "EQUITASBNK", "UJJIVANSFB", "SURYODAY",
+  "CSBBANK", "DCBBANK", "SOUTHBANK", "J&KBANK", "MAHABANK", "CENTRALBK",
+  "UCOBANK", "INDIANB", "PSB", "YESBANK", "IDFC", "TATAINVEST",
+  "JSWHLDGS", "KFINTECH", "MAPMYINDIA", "LATENTVIEW", "HAPPSTMNDS", "INTELLECT",
+  "SONATSOFTW", "BIRLASOFT", "NEWGEN", "TANLA", "ROUTE", "AFFLE",
+  "INDIAMART", "JUSTDIAL", "INFIBEAM", "EASEMYTRIP", "THOMASCOOK", "CHALET",
+  "EIHOTEL", "LEMONTREE", "JUNIPER", "TAJGVK", "WESTLIFE", "DEVYANI",
+  "SAPPHIRE", "JUBLFOOD", "BARBEQUE", "RBA", "ZEEL", "SUNTV", "PVRINOX",
+  "TV18BRDCST", "NETWORK18", "SAREGAMA", "TIPSINDLTD", "NAZARA", "DELTACORP",
+  "WONDERLA", "IMAGICAA", "MEDANTA", "NH", "KIMS", "ASTERDM", "RAINBOW",
+  "YATHARTH", "LALPATHLAB", "METROPOLIS", "THYROCARE", "VIJAYA", "KRBL",
+  "LTFOODS", "AWL", "PATANJALI", "EMAMILTD", "JYOTHYLAB", "BAJAJCON",
+  "HONASA", "GILLETTE", "PGHH", "3MINDIA", "HONAUT", "ABCAPITAL",
+  "ADANIENSOL", "ATGL", "AWL", "PETRONET", "IGL", "MGL", "GUJGASLTD",
+  "GSPL", "CASTROLIND", "GULFOILLUB", "AEGISLOG", "DEEPINDS", "CONFIPET",
+  "CHENNPETRO", "MRPL", "OIL", "HINDCOPPER", "GMDCLTD", "MOIL", "KIOCL",
+  "GRAVITA", "POCL", "SHYAMMETL", "WELCORP", "JINDALSAW", "MAHASTEEL",
+  "SARDAEN", "GPIL", "USHAMART", "ELECTCAST", "JSWINFRA", "GPPL", "ALLCARGO",
+  "BLUEDART", "TCIEXP", "VRL", "MAHLOG", "GATEWAY", "SNOWMAN", "GESHIP",
+  "SCI", "CHAMBLFERT", "RCF", "NFL", "FACT", "DEEPAKFERT", "PARADEEP",
+  "GSFC", "BAYERCROP", "SUMICHEM", "RALLIS", "DHANUKA", "BHARATRAS",
+  "INSECTICID", "SHARDACROP", "CLEAN", "FINEORG", "GALAXYSURF", "ROSSARI",
+  "AETHER", "ANURAS", "TATVA", "NEOGEN", "ALKYLAMINE", "BALAMINES",
+  "VINATIORGA", "NOCIL", "SUDARSCHEM", "KANSAINER", "AKZOINDIA", "INDIGOPNTS",
+  "SHEELAFOAM", "CERA", "KAJARIACER", "SOMANYCERA", "GREENPANEL", "CENTURYPLY",
+  "GREENPLY", "PRINCEPIPE", "FINPIPE", "SUPREMEIND", "NILKAMAL", "MOLDTKPAC",
+  "EPL", "UFLEX", "JINDALPOLY", "COSMOFIRST", "POLYMED", "TARSONS",
+  "GLAND", "JBCHEPHARM", "AJANTPHARM", "NATCOPHARM", "ERIS", "FDC",
+  "APLLTD", "SUNPHARMA", "STAR", "WOCKPHARMA", "NEULANDLAB", "SUVENPHAR",
+  "CAPLIPOINT", "MARKSANS", "SEQUENT", "HIKAL", "IOLCP", "MOREPENLAB"
 ];
 
 bool checkIsMarketOpenNow() {
@@ -93,12 +145,15 @@ void callbackDispatcher() {
 
     final prefs = await SharedPreferences.getInstance();
     final List<String> watchlist =
-        prefs.getStringList('custom_watchlist') ?? defaultNifty200Stocks;
+        prefs.getStringList('custom_watchlist') ?? defaultNifty500Stocks;
+    // टू-टियर हाइब्रिड स्कैनिंग: बैकग्राउंड में केवल Hot Radar लिस्ट को प्राथमिकता दें
+    final List<String> hotRadar = prefs.getStringList('hot_radar_stocks') ?? [];
+    final List<String> scanSubset =
+        hotRadar.isNotEmpty ? hotRadar.take(45).toList() : watchlist.take(40).toList();
+
     final double volMultiplierReq = prefs.getDouble('vol_multiplier') ?? 1.30;
     final double max52wDist = prefs.getDouble('max_52w_dist') ?? 15.0;
-
-    // बैकग्राउंड में टॉप 40 स्टॉक्स का त्वरित स्कैन
-    final scanSubset = watchlist.take(40).toList();
+    final double minTurnoverCr = prefs.getDouble('min_turnover_cr') ?? 10.0;
 
     for (String symbol in scanSubset) {
       try {
@@ -144,6 +199,9 @@ void callbackDispatcher() {
                     .sublist(volumes.length - 21, volumes.length - 1)
                     .reduce((a, b) => a + b) /
                 20;
+            double dailyTurnoverCr = (currentPrice * avgVol20) / 10000000.0;
+            if (dailyTurnoverCr < minTurnoverCr) continue;
+
             double ema50 =
                 closes.sublist(closes.length - 35).reduce((a, b) => a + b) / 35;
 
@@ -166,7 +224,7 @@ void callbackDispatcher() {
                 isCleanBody) {
               await triggerNotification(
                 "🟢 BUY ALERT: $symbol @ ₹${currentPrice.toStringAsFixed(1)}",
-                "डार्वस ब्रेकआउट! Entry: ₹$boxTop | SL: ₹$boxBottom",
+                "डार्वस ब्रेकआउट! Entry: ₹${boxTop.toStringAsFixed(1)} | SL: ₹${boxBottom.toStringAsFixed(1)}",
               );
             } else if (currentPrice < boxBottom) {
               await triggerNotification(
@@ -176,6 +234,7 @@ void callbackDispatcher() {
             }
           }
         }
+        await Future.delayed(const Duration(milliseconds: 250));
       } catch (_) {}
     }
 
@@ -238,7 +297,7 @@ class _DarvasProAppState extends State<DarvasProApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Darvas Pro Terminal',
+      title: 'Darvas Pro 500 Terminal',
       themeMode: _themeMode,
       theme: ThemeData(
         brightness: Brightness.light,
@@ -300,6 +359,8 @@ class DarvasSignal {
   final double near52wPercent;
   final double volumeSurgeX;
   final String riskRewardRatio;
+  final double turnoverCr;
+  final bool isHotRadar;
 
   DarvasSignal({
     required this.symbol,
@@ -315,6 +376,8 @@ class DarvasSignal {
     required this.near52wPercent,
     required this.volumeSurgeX,
     required this.riskRewardRatio,
+    required this.turnoverCr,
+    required this.isHotRadar,
   });
 }
 
@@ -428,20 +491,30 @@ class DarvasTerminalScreen extends StatefulWidget {
 class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
   int currentTabIndex = 0;
 
-  // यूज़र प्रोफाइल व सेटिंग्स वेरिएबल्स
   String traderName = "Rituraj Patel";
   double initialCapital = 100000.0;
   double virtualCash = 100000.0;
-  double riskPercentPerTrade = 1.0; // प्रति ट्रेड रिस्क %
-  double volMultiplierReq = 1.30; // वॉल्यूम सर्ज गुणक
-  double max52wDist = 15.0; // 52W हाई से दूरी %
-  String defaultDematBroker = "Ask Every Time"; // डिफ़ॉल्ट ब्रोकर
+  double riskPercentPerTrade = 1.0;
+  double volMultiplierReq = 1.30;
+  double max52wDist = 15.0;
+  double minTurnoverCr = 10.0; // स्मॉलकैप लिक्विडिटी फ़िल्टर (₹10 Cr)
+  String defaultDematBroker = "Ask Every Time";
   String lastBackupTimestamp = "अभी तक नहीं";
 
-  List<String> watchlist = List.from(defaultNifty200Stocks);
+  String githubJsonUrl = defaultGithubWatchlistUrl;
+  String watchlistSyncStatus = "Nifty 500 बास्केट सक्रिय";
+  bool isSyncingWatchlist = false;
+
+  // यूनिक 500 स्टॉक्स लिस्ट + ऑटो Hot Radar लिस्ट
+  List<String> watchlist = defaultNifty500Stocks.toSet().toList();
+  List<String> hotRadarSymbols = [];
+
+  // स्कैनर क्विक फ़िल्टर मोड: HOT, BUY, RADAR, ALL
+  String selectedFilterMode = "HOT";
 
   bool isScanning = false;
   int scannedCount = 0;
+  String scanModeLabel = "Nifty 500 स्कैन";
   String marketStatus = "मार्केट जाँचा जा रहा है...";
   List<DarvasSignal> signalList = [];
   List<VirtualPosition> activePositions = [];
@@ -453,9 +526,85 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
   @override
   void initState() {
     super.initState();
-    loadAllUserData();
+    initializeAppAndSyncWatchlist();
+  }
+
+  Future<void> initializeAppAndSyncWatchlist() async {
+    await loadAllUserData();
     updateMarketStatusMessage();
-    runFullDarvasScan();
+    await syncWatchlistFromGitHub(silent: true);
+    runThrottledNifty500Scan(hotRadarOnly: false);
+  }
+
+  Future<void> syncWatchlistFromGitHub({bool silent = false}) async {
+    if (githubJsonUrl.trim().isEmpty) return;
+
+    setState(() => isSyncingWatchlist = true);
+
+    try {
+      final response = await http
+          .get(Uri.parse(githubJsonUrl.trim()))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+        List<dynamic> rawStocks = [];
+
+        if (decoded is Map && decoded.containsKey('stocks')) {
+          rawStocks = decoded['stocks'];
+        } else if (decoded is List) {
+          rawStocks = decoded;
+        }
+
+        final List<String> fetchedSymbols = rawStocks
+            .map((e) => e.toString().trim().toUpperCase())
+            .where((e) => e.isNotEmpty)
+            .toSet()
+            .toList();
+
+        if (fetchedSymbols.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          final List<String> manuallyAdded =
+              prefs.getStringList('manual_extra_stocks') ?? [];
+
+          final Set<String> mergedSet = {...fetchedSymbols, ...manuallyAdded};
+          final now = DateTime.now();
+          final timeStr =
+              "${now.day}/${now.month} ${now.hour}:${now.minute.toString().padLeft(2, '0')}";
+
+          setState(() {
+            watchlist = mergedSet.toList();
+            watchlistSyncStatus =
+                "✅ GitHub सिंक ($timeStr) • ${watchlist.length} स्टॉक्स";
+          });
+
+          await saveAllUserDataAndAutoBackup();
+
+          if (!silent && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    "✅ GitHub से ${watchlist.length} स्टॉक्स सफलतापूर्वक अपडेट हो गए!"),
+                backgroundColor: const Color(0xFF00E676),
+              ),
+            );
+          }
+        }
+      } else {
+        setState(() {
+          watchlistSyncStatus =
+              "📴 लोकल Nifty ${watchlist.length} बास्केट सक्रिय";
+        });
+      }
+    } catch (_) {
+      setState(() {
+        watchlistSyncStatus = "📴 ऑफ़लाइन Nifty ${watchlist.length} बास्केट";
+      });
+    } finally {
+      if (mounted) {
+        setState(() => isSyncingWatchlist = false);
+      }
+    }
   }
 
   Future<void> loadAllUserData() async {
@@ -467,14 +616,20 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
       riskPercentPerTrade = prefs.getDouble('risk_percent') ?? 1.0;
       volMultiplierReq = prefs.getDouble('vol_multiplier') ?? 1.30;
       max52wDist = prefs.getDouble('max_52w_dist') ?? 15.0;
-      defaultDematBroker = prefs.getString('default_broker') ?? "Ask Every Time";
+      minTurnoverCr = prefs.getDouble('min_turnover_cr') ?? 10.0;
+      defaultDematBroker =
+          prefs.getString('default_broker') ?? "Ask Every Time";
+      githubJsonUrl =
+          prefs.getString('github_json_url') ?? defaultGithubWatchlistUrl;
       lastBackupTimestamp =
           prefs.getString('last_backup_time') ?? "ऑटो-सिंक सक्रिय";
 
       final savedList = prefs.getStringList('custom_watchlist');
       if (savedList != null && savedList.isNotEmpty) {
-        watchlist = savedList;
+        watchlist = savedList.toSet().toList();
       }
+
+      hotRadarSymbols = prefs.getStringList('hot_radar_stocks') ?? [];
 
       final activeStr = prefs.getString('active_positions');
       if (activeStr != null && activeStr.isNotEmpty) {
@@ -504,8 +659,11 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     await prefs.setDouble('risk_percent', riskPercentPerTrade);
     await prefs.setDouble('vol_multiplier', volMultiplierReq);
     await prefs.setDouble('max_52w_dist', max52wDist);
+    await prefs.setDouble('min_turnover_cr', minTurnoverCr);
     await prefs.setString('default_broker', defaultDematBroker);
+    await prefs.setString('github_json_url', githubJsonUrl);
     await prefs.setStringList('custom_watchlist', watchlist);
+    await prefs.setStringList('hot_radar_stocks', hotRadarSymbols);
     await prefs.setString('last_backup_time', formattedTime);
 
     await prefs.setString('active_positions',
@@ -513,20 +671,22 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     await prefs.setString('trade_history',
         json.encode(tradeHistory.map((e) => e.toMap()).toList()));
 
-    // ऑटो वॉल्ट बैकअप
     final autoBackupVault = {
       'traderName': traderName,
       'initialCapital': initialCapital,
       'virtualCash': virtualCash,
+      'hotRadarStocks': hotRadarSymbols,
       'activePositions': activePositions.map((e) => e.toMap()).toList(),
       'tradeHistory': tradeHistory.map((e) => e.toMap()).toList(),
       'lastBackupTime': formattedTime,
     };
     await prefs.setString('auto_backup_vault', json.encode(autoBackupVault));
 
-    setState(() {
-      lastBackupTimestamp = formattedTime;
-    });
+    if (mounted) {
+      setState(() {
+        lastBackupTimestamp = formattedTime;
+      });
+    }
   }
 
   void updateMarketStatusMessage() {
@@ -847,6 +1007,9 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                             qty: orderQty,
                             buyTime: timeString,
                           ));
+                          if (!hotRadarSymbols.contains(s.symbol)) {
+                            hotRadarSymbols.insert(0, s.symbol);
+                          }
                         });
 
                         await saveAllUserDataAndAutoBackup();
@@ -919,19 +1082,29 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     await saveAllUserDataAndAutoBackup();
   }
 
-  // एकल स्टॉक डेटा फेच हेल्पर (बैच प्रोसेसिंग के लिए)
-  Future<DarvasSignal?> fetchSingleStockSignal(String symbol) async {
+  // HTTP 429 रेट-लिमिट सुरक्षा के साथ सिंगल स्टॉक फेचर
+  Future<DarvasSignal?> fetchSingleStockSignal(String symbol,
+      {int retryCount = 0}) async {
     try {
       final url = Uri.parse(
           'https://query1.finance.yahoo.com/v8/finance/chart/$symbol.NS?interval=1d&range=1y');
       final response = await http.get(url, headers: {
         'User-Agent':
-            'Mozilla/5.0 (Android; Mobile; rv:109.0) Gecko/109.0 Firefox/119.0'
+            'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36'
       }).timeout(const Duration(seconds: 7));
+
+      // यदि Yahoo API रेट-लिमिट (HTTP 429) दे, तो 1 सेकंड रुककर पुनः प्रयास करें
+      if (response.statusCode == 429 && retryCount < 1) {
+        await Future.delayed(const Duration(milliseconds: 1100));
+        return fetchSingleStockSignal(symbol, retryCount: retryCount + 1);
+      }
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final quote = data['chart']['result'][0]['indicators']['quote'][0];
+        final resultList = data['chart']?['result'];
+        if (resultList == null || resultList.isEmpty) return null;
+
+        final quote = resultList[0]['indicators']['quote'][0];
 
         List<double> closes = [];
         List<double> highs = [];
@@ -964,7 +1137,10 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                   .sublist(volumes.length - 21, volumes.length - 1)
                   .reduce((a, b) => a + b) /
               20;
-          double volumeMultiplier = currentVol / avgVol20;
+          double volumeMultiplier = avgVol20 > 0 ? currentVol / avgVol20 : 1.0;
+
+          // स्मॉलकैप लिक्विडिटी फ़िल्टर (औसत दैनिक टर्नओवर करोड़ में)
+          double dailyTurnoverCr = (currentPrice * avgVol20) / 10000000.0;
 
           double ema50 =
               closes.sublist(closes.length - 35).reduce((a, b) => a + b) / 35;
@@ -982,7 +1158,6 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           bool isCleanBody =
               candleRange > 0 ? (upperWick / candleRange) <= 0.35 : true;
 
-          // कस्टम रिस्क % के अनुसार क्वांटिटी गणना
           double riskAmount = initialCapital * (riskPercentPerTrade / 100);
           double riskPerShare = (currentPrice - boxBottom).abs();
           if (riskPerShare < 1.0) riskPerShare = currentPrice * 0.02;
@@ -997,8 +1172,10 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
               rewardDistance / (riskPerShare > 0 ? riskPerShare : 1);
           String rrText = "1:${riskRatio.toStringAsFixed(1)}";
 
+          bool hasActivePos = false;
           for (var pos in activePositions) {
             if (pos.symbol == symbol) {
+              hasActivePos = true;
               pos.currentPrice = currentPrice;
               if (currentPrice > addLevel && pos.currentSL < boxTop) {
                 pos.currentSL = boxTop;
@@ -1006,8 +1183,11 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
             }
           }
 
+          bool isLiquidEnough = dailyTurnoverCr >= minTurnoverCr;
+
           if (currentPrice > boxTop &&
               isNear52w &&
+              isLiquidEnough &&
               currentPrice > ema50 &&
               volumeMultiplier >= volMultiplierReq &&
               isCleanBody) {
@@ -1021,14 +1201,18 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
               addLevel: addLevel,
               nextTarget: nextTarget,
               suggestedQty: qty,
-              reason: "52W हाई के पास क्लीन ब्रेकआउट + वॉल्यूम पुष्टि!",
+              reason:
+                  "52W हाई के पास क्लीन ब्रेकआउट + वॉल्यूम & ₹${dailyTurnoverCr.toStringAsFixed(0)}Cr लिक्विडिटी!",
               near52wPercent: distFrom52w,
               volumeSurgeX: volumeMultiplier,
               riskRewardRatio: rrText,
+              turnoverCr: dailyTurnoverCr,
+              isHotRadar: true,
             );
           } else if (currentPrice >= (boxTop * 0.985) &&
               currentPrice <= boxTop &&
-              isNear52w) {
+              isNear52w &&
+              isLiquidEnough) {
             return DarvasSignal(
               symbol: symbol,
               status: "RADAR (Pre-Breakout)",
@@ -1043,8 +1227,10 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
               near52wPercent: distFrom52w,
               volumeSurgeX: volumeMultiplier,
               riskRewardRatio: rrText,
+              turnoverCr: dailyTurnoverCr,
+              isHotRadar: true,
             );
-          } else if (currentPrice > addLevel) {
+          } else if (currentPrice > addLevel && isLiquidEnough) {
             return DarvasSignal(
               symbol: symbol,
               status: "ADD (Pyramid)",
@@ -1059,6 +1245,8 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
               near52wPercent: distFrom52w,
               volumeSurgeX: volumeMultiplier,
               riskRewardRatio: rrText,
+              turnoverCr: dailyTurnoverCr,
+              isHotRadar: true,
             );
           } else if (currentPrice < boxBottom) {
             return DarvasSignal(
@@ -1075,6 +1263,8 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
               near52wPercent: distFrom52w,
               volumeSurgeX: volumeMultiplier,
               riskRewardRatio: "N/A",
+              turnoverCr: dailyTurnoverCr,
+              isHotRadar: hasActivePos,
             );
           } else {
             return DarvasSignal(
@@ -1087,10 +1277,14 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
               addLevel: addLevel,
               nextTarget: nextTarget,
               suggestedQty: qty,
-              reason: "डार्वस कंसॉलिडेशन बॉक्स के अंदर चल रहा है।",
+              reason: isLiquidEnough
+                  ? "डार्वस कंसॉलिडेशन बॉक्स के अंदर चल रहा है।"
+                  : "कम लिक्विडिटी (₹${dailyTurnoverCr.toStringAsFixed(1)}Cr/दिन)",
               near52wPercent: distFrom52w,
               volumeSurgeX: volumeMultiplier,
               riskRewardRatio: rrText,
+              turnoverCr: dailyTurnoverCr,
+              isHotRadar: hasActivePos || (isNear52w && isLiquidEnough && distFrom52w <= 5.0),
             );
           }
         }
@@ -1099,19 +1293,27 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     return null;
   }
 
-  // Nifty 200 त्वरित बैच स्कैनिंग (15 स्टॉक्स प्रति बैच)
-  Future<void> runFullDarvasScan() async {
+  // थ्रॉटल्ड बैच इंजन (20-20 स्टॉक्स प्रति बैच + 400ms पॉज़ + Hot Radar ऑटो-अपडेट)
+  Future<void> runThrottledNifty500Scan({bool hotRadarOnly = false}) async {
     if (isScanning) return;
+
+    final List<String> targetList = (hotRadarOnly && hotRadarSymbols.isNotEmpty)
+        ? hotRadarSymbols
+        : watchlist;
+
     setState(() {
       isScanning = true;
       scannedCount = 0;
+      scanModeLabel = hotRadarOnly
+          ? "Hot Radar (${targetList.length})"
+          : "Nifty ${targetList.length}";
     });
 
     List<DarvasSignal> tempResults = [];
-    const int batchSize = 15;
+    const int batchSize = 20;
 
-    for (int i = 0; i < watchlist.length; i += batchSize) {
-      final batch = watchlist.skip(i).take(batchSize).toList();
+    for (int i = 0; i < targetList.length; i += batchSize) {
+      final batch = targetList.skip(i).take(batchSize).toList();
       final batchFutures = batch.map((sym) => fetchSingleStockSignal(sym));
       final results = await Future.wait(batchFutures);
 
@@ -1123,8 +1325,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
 
       if (mounted) {
         setState(() {
-          scannedCount = (i + batch.length).clamp(0, watchlist.length);
-          // BUY और RADAR सिग्नल्स को सबसे ऊपर दिखाना
+          scannedCount = (i + batch.length).clamp(0, targetList.length);
           tempResults.sort((a, b) {
             int priority(String st) {
               if (st.contains("BUY")) return 1;
@@ -1137,6 +1338,27 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           });
           signalList = List.from(tempResults);
         });
+      }
+
+      // रेट-लिमिट से बचने के लिए 400ms का थ्रॉटल्ड पॉज़
+      if (i + batchSize < targetList.length) {
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+    }
+
+    // फुल 500 स्कैन के बाद ऑटो Hot Radar वॉचलिस्ट अपडेट करना
+    if (!hotRadarOnly && tempResults.isNotEmpty) {
+      final Set<String> updatedHotSet = {};
+      for (var pos in activePositions) {
+        updatedHotSet.add(pos.symbol);
+      }
+      for (var sig in tempResults) {
+        if (sig.isHotRadar && updatedHotSet.length < 45) {
+          updatedHotSet.add(sig.symbol);
+        }
+      }
+      if (updatedHotSet.isNotEmpty) {
+        hotRadarSymbols = updatedHotSet.toList();
       }
     }
 
@@ -1166,7 +1388,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           children: [
             Icon(Icons.candlestick_chart, color: Color(0xFF00E676)),
             SizedBox(width: 8),
-            Text('DARVAS PRO 200',
+            Text('DARVAS PRO 500',
                 style: TextStyle(
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.0,
@@ -1174,6 +1396,15 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           ],
         ),
         actions: [
+          if (hotRadarSymbols.isNotEmpty)
+            IconButton(
+              tooltip: "तेज़ Hot Radar स्कैन (${hotRadarSymbols.length})",
+              icon: const Icon(Icons.local_fire_department,
+                  color: Colors.orangeAccent),
+              onPressed: isScanning
+                  ? null
+                  : () => runThrottledNifty500Scan(hotRadarOnly: true),
+            ),
           IconButton(
             tooltip: "डे/नाइट/सिस्टम थीम",
             icon: Icon(themeIcon, color: const Color(0xFF00B0FF)),
@@ -1185,8 +1416,8 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                 color: Color(0xFF00E676)),
             onPressed: () {
               triggerNotification(
-                "🔔 Darvas Pro 200 Active",
-                "निफ्टी 200 स्कैनर और ऑटो-बैकअप सिस्टम सक्रिय हैं!",
+                "🔔 Darvas Pro 500 Active",
+                "निफ्टी 500 थ्रॉटल्ड इंजन और Hot Radar अलर्ट सक्रिय हैं!",
               );
             },
           ),
@@ -1212,9 +1443,9 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
           unselectedFontSize: 11,
           onTap: (index) => setState(() => currentTabIndex = index),
           items: [
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.radar),
-              label: "स्कैनर (200)",
+            BottomNavigationBarItem(
+              icon: const Icon(Icons.radar),
+              label: "स्कैनर (${watchlist.length})",
             ),
             BottomNavigationBarItem(
               icon: Stack(
@@ -1246,35 +1477,56 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
       ),
       floatingActionButton: currentTabIndex == 0
           ? FloatingActionButton.extended(
-              onPressed: isScanning ? null : runFullDarvasScan,
+              onPressed: isScanning
+                  ? null
+                  : () => runThrottledNifty500Scan(hotRadarOnly: false),
               backgroundColor: const Color(0xFF00E676),
               foregroundColor: Colors.black,
               icon: const Icon(Icons.bolt),
               label: Text(
                   isScanning
-                      ? "स्कैन: $scannedCount/${watchlist.length}"
-                      : "Nifty 200 स्कैन",
+                      ? "$scanModeLabel: $scannedCount"
+                      : "Full 500 स्कैन",
                   style: const TextStyle(fontWeight: FontWeight.bold)),
             )
           : null,
     );
   }
 
-  // 1. लाइव स्कैनर टैब
+  // 1. लाइव स्कैनर टैब (Hot Radar फ़िल्टर चिप्स + सर्च बार)
   Widget buildScannerTab() {
+    final int buyCount =
+        signalList.where((s) => s.status.contains("BUY")).length;
+    final int radarCount =
+        signalList.where((s) => s.status.contains("RADAR")).length;
+    final int hotCount = signalList.where((s) => s.isHotRadar).length;
+
     final filteredSignals = signalList.where((s) {
-      return s.symbol.toLowerCase().contains(searchQuery.toLowerCase());
+      final matchesSearch =
+          s.symbol.toLowerCase().contains(searchQuery.toLowerCase());
+      if (!matchesSearch) return false;
+
+      if (searchQuery.isNotEmpty) return true; // सर्च करते समय सभी में खोजें
+
+      if (selectedFilterMode == "HOT") {
+        return s.isHotRadar;
+      } else if (selectedFilterMode == "BUY") {
+        return s.status.contains("BUY") || s.status.contains("ADD");
+      } else if (selectedFilterMode == "RADAR") {
+        return s.status.contains("RADAR");
+      }
+      return true;
     }).toList();
 
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
           child: TextField(
             controller: searchController,
             decoration: InputDecoration(
               hintText:
-                  "Nifty 200 में शेयर सर्च करें (उदा. HAL, TRENT, TATASTEEL)...",
+                  "Nifty 500 में शेयर सर्च करें (उदा. HAL, MAZDOCK, TRENT)...",
               prefixIcon: const Icon(Icons.search, color: Color(0xFF00E676)),
               suffixIcon: searchQuery.isNotEmpty
                   ? IconButton(
@@ -1297,8 +1549,56 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
             },
           ),
         ),
+        // क्विक Hot Radar ऑटो-फ़िल्टर चिप्स
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: Row(
+            children: [
+              ChoiceChip(
+                label: Text("🔥 Hot Radar ($hotCount)",
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.bold)),
+                selected: selectedFilterMode == "HOT",
+                selectedColor: const Color(0xFF00E676).withOpacity(0.25),
+                onSelected: (_) =>
+                    setState(() => selectedFilterMode = "HOT"),
+              ),
+              const SizedBox(width: 6),
+              ChoiceChip(
+                label: Text("🟢 BUY Only ($buyCount)",
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.bold)),
+                selected: selectedFilterMode == "BUY",
+                selectedColor: const Color(0xFF00E676).withOpacity(0.25),
+                onSelected: (_) =>
+                    setState(() => selectedFilterMode = "BUY"),
+              ),
+              const SizedBox(width: 6),
+              ChoiceChip(
+                label: Text("🟣 Pre-Breakout ($radarCount)",
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.bold)),
+                selected: selectedFilterMode == "RADAR",
+                selectedColor: Colors.purpleAccent.withOpacity(0.25),
+                onSelected: (_) =>
+                    setState(() => selectedFilterMode = "RADAR"),
+              ),
+              const SizedBox(width: 6),
+              ChoiceChip(
+                label: Text("📋 सभी (${signalList.length})",
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.bold)),
+                selected: selectedFilterMode == "ALL",
+                selectedColor: const Color(0xFF00B0FF).withOpacity(0.25),
+                onSelected: (_) =>
+                    setState(() => selectedFilterMode = "ALL"),
+              ),
+            ],
+          ),
+        ),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1317,16 +1617,19 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
         ),
         if (isScanning)
           LinearProgressIndicator(
-            value: watchlist.isNotEmpty ? scannedCount / watchlist.length : 0,
+            value: watchlist.isNotEmpty
+                ? (scannedCount / watchlist.length).clamp(0.0, 1.0)
+                : 0,
             color: const Color(0xFF00E676),
           ),
         Expanded(
           child: signalList.isEmpty && !isScanning
               ? Center(
                   child: ElevatedButton.icon(
-                    onPressed: runFullDarvasScan,
+                    onPressed: () =>
+                        runThrottledNifty500Scan(hotRadarOnly: false),
                     icon: const Icon(Icons.refresh, color: Colors.black),
-                    label: const Text("Nifty 200 स्कैन शुरू करें",
+                    label: const Text("Nifty 500 स्कैन शुरू करें",
                         style: TextStyle(
                             color: Colors.black, fontWeight: FontWeight.bold)),
                     style: ElevatedButton.styleFrom(
@@ -1335,7 +1638,21 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                 )
               : filteredSignals.isEmpty
                   ? Center(
-                      child: Text("'$searchQuery' का कोई शेयर नहीं मिला।"),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(searchQuery.isNotEmpty
+                              ? "'$searchQuery' का कोई शेयर नहीं मिला।"
+                              : "इस फ़िल्टर में अभी कोई स्टॉक नहीं है।"),
+                          const SizedBox(height: 10),
+                          if (selectedFilterMode != "ALL")
+                            OutlinedButton(
+                              onPressed: () =>
+                                  setState(() => selectedFilterMode = "ALL"),
+                              child: const Text("सभी स्कैन किए गए शेयर देखें"),
+                            )
+                        ],
+                      ),
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.all(12),
@@ -1710,7 +2027,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     );
   }
 
-  // 4. प्रोफ़ाइल और सेटिंग्स टैब (Profile, Performance & Strategy Settings)
+  // 4. प्रोफ़ाइल और सेटिंग्स टैब (Nifty 500 + लिक्विडिटी फ़िल्टर + Hot Radar स्टेटस)
   Widget buildProfileAndSettingsTab() {
     int totalClosed = tradeHistory.length;
     int winningTrades = tradeHistory.where((t) => t.pnl > 0).length;
@@ -1751,7 +2068,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                           Text(traderName,
                               style: const TextStyle(
                                   fontSize: 18, fontWeight: FontWeight.bold)),
-                          const Text("Momentum & Darvas Swing Trader",
+                          const Text("Nifty 500 Institutional Darvas Trader",
                               style:
                                   TextStyle(fontSize: 12, color: Colors.grey)),
                         ],
@@ -1794,7 +2111,6 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                   ],
                 ),
                 const Divider(height: 24),
-                // विन-रेट और एक्यूरेसी मीटर
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
@@ -1842,7 +2158,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
         ),
         const SizedBox(height: 12),
 
-        // 2. ट्रेडिंग व अल्गोरिदम सेटिंग्स
+        // 2. GitHub डायनामिक Nifty 500 व Hot Radar सिंक कार्ड
         Card(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -1851,12 +2167,108 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("⚙️ ट्रेडिंग व रिस्क सेटिंग्स",
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("☁️ Nifty 500 & Hot Radar इंजन",
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    if (isSyncingWatchlist)
+                      const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(watchlistSyncStatus,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF00E676),
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(
+                    "🔥 बैकग्राउंड Hot Radar लिस्ट: ${hotRadarSymbols.length} चुनिंदा स्टॉक्स",
+                    style: const TextStyle(
+                        fontSize: 12, color: Colors.orangeAccent)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF00B0FF),
+                          foregroundColor: Colors.black,
+                        ),
+                        icon: const Icon(Icons.sync, size: 18),
+                        label: const Text("GitHub सिंक",
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: isSyncingWatchlist
+                            ? null
+                            : () => syncWatchlistFromGitHub(silent: false),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.link, size: 18),
+                        label: const Text("JSON URL बदलें"),
+                        onPressed: () {
+                          final urlCtrl =
+                              TextEditingController(text: githubJsonUrl);
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text("GitHub Raw JSON URL"),
+                              content: TextField(
+                                controller: urlCtrl,
+                                maxLines: 2,
+                                decoration: const InputDecoration(
+                                  hintText:
+                                      "https://raw.githubusercontent.com/.../nifty500.json",
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    child: const Text("रद्द")),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    setState(() =>
+                                        githubJsonUrl = urlCtrl.text.trim());
+                                    await saveAllUserDataAndAutoBackup();
+                                    Navigator.pop(ctx);
+                                    syncWatchlistFromGitHub(silent: false);
+                                  },
+                                  child: const Text("सेव व सिंक"),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // 3. ट्रेडिंग, रिस्क और लिक्विडिटी सेटिंग्स
+        Card(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("⚙️ ट्रेडिंग, रिस्क व लिक्विडिटी फ़िल्टर",
                     style:
                         TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 14),
-
-                // प्रति ट्रेड रिस्क स्लाइडर
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1878,8 +2290,27 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                     await saveAllUserDataAndAutoBackup();
                   },
                 ),
-
-                // वॉल्यूम सर्ज गुणक स्लाइडर
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("न्यूनतम दैनिक टर्नओवर (Liquidity):"),
+                    Text("₹${minTurnoverCr.toStringAsFixed(0)} Cr",
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.purpleAccent)),
+                  ],
+                ),
+                Slider(
+                  value: minTurnoverCr,
+                  min: 2.0,
+                  max: 50.0,
+                  divisions: 12,
+                  activeColor: Colors.purpleAccent,
+                  onChanged: (val) async {
+                    setState(() => minTurnoverCr = val);
+                    await saveAllUserDataAndAutoBackup();
+                  },
+                ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1901,8 +2332,6 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                     await saveAllUserDataAndAutoBackup();
                   },
                 ),
-
-                // 52-वीक हाई रेंज स्लाइडर
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1925,8 +2354,6 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                   },
                 ),
                 const Divider(height: 20),
-
-                // डिफ़ॉल्ट डीमैट ब्रोकर चयन
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -1934,7 +2361,12 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                     DropdownButton<String>(
                       value: defaultDematBroker,
                       underline: const SizedBox(),
-                      items: ["Ask Every Time", "Dhan", "Angel One", "Paytm Money"]
+                      items: [
+                        "Ask Every Time",
+                        "Dhan",
+                        "Angel One",
+                        "Paytm Money"
+                      ]
                           .map((b) => DropdownMenuItem(
                               value: b,
                               child: Text(b,
@@ -1955,7 +2387,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
         ),
         const SizedBox(height: 12),
 
-        // 3. वॉचलिस्ट व कैपिटल कंट्रोल
+        // 4. वॉचलिस्ट व कैपिटल कंट्रोल
         Card(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -1997,13 +2429,28 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                                         symCtrl.text.trim().toUpperCase();
                                     if (sym.isNotEmpty &&
                                         !watchlist.contains(sym)) {
-                                      setState(() => watchlist.insert(0, sym));
+                                      final prefs =
+                                          await SharedPreferences.getInstance();
+                                      final extra = prefs.getStringList(
+                                              'manual_extra_stocks') ??
+                                          [];
+                                      if (!extra.contains(sym)) {
+                                        extra.add(sym);
+                                        await prefs.setStringList(
+                                            'manual_extra_stocks', extra);
+                                      }
+                                      setState(() {
+                                        watchlist.insert(0, sym);
+                                        if (!hotRadarSymbols.contains(sym)) {
+                                          hotRadarSymbols.insert(0, sym);
+                                        }
+                                      });
                                       await saveAllUserDataAndAutoBackup();
                                       Navigator.pop(ctx);
                                       ScaffoldMessenger.of(context)
                                           .showSnackBar(SnackBar(
                                               content: Text(
-                                                  "✅ $sym वॉचलिस्ट में जुड़ गया!")));
+                                                  "✅ $sym वॉचलिस्ट व Hot Radar में जुड़ गया!")));
                                     }
                                   },
                                   child: const Text("जोड़ें"),
@@ -2069,7 +2516,6 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
     );
   }
 
-  // मॉडर्न स्टॉक कार्ड
   Widget buildInteractiveStockCard(DarvasSignal s) {
     Color badgeColor;
     if (s.status.contains("BUY")) {
@@ -2141,7 +2587,7 @@ class _DarvasTerminalScreenState extends State<DarvasTerminalScreen> {
                     style: const TextStyle(
                         fontSize: 20, fontWeight: FontWeight.w900)),
                 Text(
-                  "वॉल्यूम: ${s.volumeSurgeX.toStringAsFixed(1)}x Avg",
+                  "वॉल्यूम: ${s.volumeSurgeX.toStringAsFixed(1)}x • ₹${s.turnoverCr.toStringAsFixed(0)}Cr",
                   style: TextStyle(
                     fontSize: 12,
                     color: s.volumeSurgeX >= volMultiplierReq
