@@ -25,7 +25,7 @@ android {
         versionName = flutter.versionName
     }
 
-signingConfigs {
+    signingConfigs {
         create("release") {
             val keystoreFile = file("darvas_key.jks")
             val pass = System.getenv("STORE_PASSWORD")
@@ -48,6 +48,7 @@ signingConfigs {
             }
         }
     }
+}
 
 kotlin {
     compilerOptions {
