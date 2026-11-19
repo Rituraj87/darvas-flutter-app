@@ -11,20 +11,21 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        isCoreLibraryDesugaringEnabled = true
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
         applicationId = "com.example.darvas_pro"
-        minSdk = 21
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-    buildTypes {
-        release {
-            signingConfigs {
+    signingConfigs {
         create("release") {
             val keystoreFile = file("darvas_key.jks")
             if (keystoreFile.exists()) {
@@ -45,6 +46,7 @@ android {
             }
         }
     }
+}
 
 kotlin {
     jvmToolchain(17)
