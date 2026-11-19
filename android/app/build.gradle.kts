@@ -25,12 +25,13 @@ android {
         versionName = flutter.versionName
     }
 
-    signingConfigs {
+signingConfigs {
         create("release") {
             val keystoreFile = file("darvas_key.jks")
-            if (keystoreFile.exists()) {
+            val pass = System.getenv("STORE_PASSWORD")
+            if (keystoreFile.exists() && !pass.isNullOrEmpty()) {
                 storeFile = keystoreFile
-                storePassword = System.getenv("STORE_PASSWORD")
+                storePassword = pass
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
             }
@@ -39,14 +40,14 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (file("darvas_key.jks").exists()) {
+            val hasValidKey = file("darvas_key.jks").exists() && !System.getenv("STORE_PASSWORD").isNullOrEmpty()
+            signingConfig = if (hasValidKey) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")
             }
         }
     }
-}
 
 kotlin {
     compilerOptions {
